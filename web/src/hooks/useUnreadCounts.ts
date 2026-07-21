@@ -10,7 +10,7 @@ export function useUnreadCounts() {
   const refresh = useCallback(async () => {
     if (!uid) return;
     try {
-      const data = await getUnreadCounts(uid);
+      const data = await getUnreadCounts();
       if (data.counts) {
         const store = useChatStore.getState();
         store.setUnreadCounts(data.counts);

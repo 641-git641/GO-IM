@@ -4,13 +4,11 @@ import { useAuthStore } from '@/stores/authStore';
 import { useChatStore } from '@/stores/chatStore';
 import { Cmd, ChatType, MsgType } from '@/types';
 import type { ChatMessage, ChatTypeValue, MsgTypeValue, FileMetadata } from '@/types';
-import { isRecalled, isGroupNotification } from '@/lib/utils';
 import { HISTORY_LIMIT } from '@/lib/constants';
 
 export function useChat() {
   const { uid } = useAuthStore();
-  const { addMessage, prependMessages, setNoMoreHistory, upsertConversation, activePeer } =
-    useChatStore();
+  const { addMessage, setNoMoreHistory, upsertConversation } = useChatStore();
 
   /** Send a text message */
   const sendText = useCallback(
@@ -115,76 +113,87 @@ export function useChat() {
       const conv = useChatStore.getState().conversations.get(peerId);
       if (conv && !conv.hasMore) return;
 
+      // Save existing message IDs before we request history. The global handler
+      // (useWebSocket) will add incoming history Chat messages to the conversation
+      // in DESC order (newest first). We track which messages pre-existed so we can
+      // extract the new ones, reverse them to chronological order, and rebuild.
+      const existingIds = new Set((conv?.messages || []).map((m) => m.msgId));
+
       // Find oldest message timestamp
       let beforeTs = before || String(Date.now());
       if (!before && conv && conv.messages.length > 0) {
         beforeTs = conv.messages[0].timestamp;
       }
 
-      // Set up a one-shot listener for CmdChat and CmdHistory messages
-      const messages: ChatMessage[] = [];
       let completeReceived = false;
-
-      const unsubChat = wsManager.subscribe(Cmd.Chat, (msg) => {
-        if (msg.to === peerId || msg.from === peerId) {
-          // Skip recalled and group notification messages in history
-          if (isRecalled(msg.content)) return;
-          if (isGroupNotification(msg.content)) return;
-
-          const chatMsg: ChatMessage = {
-            ...msg,
-            chatType: msg.chatType as ChatTypeValue,
-            msgType: msg.msgType as MsgTypeValue,
-            status: 'sent',
-            recalled: false,
-          };
-          messages.push(chatMsg);
-        }
-      });
 
       const unsubHistory = wsManager.subscribe(Cmd.History, () => {
         completeReceived = true;
-        if (messages.length === 0) {
-          setNoMoreHistory(peerId);
-        } else {
-          // DB returns DESC (newest first), but the UI renders top-to-bottom
-          // oldest-first. Reverse to restore chronological order.
-          messages.reverse();
-          prependMessages(peerId, messages);
-          if (messages.length < HISTORY_LIMIT) {
-            setNoMoreHistory(peerId);
-          }
-        }
-        unsubChat();
         unsubHistory();
+
+        // Get the conversation after the global handler has added history messages.
+        const updatedConv = useChatStore.getState().conversations.get(peerId);
+        if (!updatedConv) return;
+
+        const allMessages = updatedConv.messages;
+        // Separate pre-existing messages from newly loaded history messages.
+        const oldMessages = allMessages.filter((m) => existingIds.has(m.msgId));
+        const newMessages = allMessages.filter((m) => !existingIds.has(m.msgId));
+
+        if (newMessages.length === 0) {
+          setNoMoreHistory(peerId);
+          return;
+        }
+
+        // History arrives in DESC order (newest first). Reverse to chronological
+        // (oldest first) so it renders top-to-bottom correctly.
+        newMessages.reverse();
+
+        // Rebuild: history messages first (oldest at top), then pre-existing messages.
+        const rebuilt = [...newMessages, ...oldMessages];
+
+        useChatStore.setState((s) => {
+          const conversations = new Map(s.conversations);
+          conversations.set(peerId, { ...updatedConv, messages: rebuilt });
+          return { conversations };
+        });
+
+        if (newMessages.length < HISTORY_LIMIT) {
+          setNoMoreHistory(peerId);
+        }
       });
 
-      // Send history request
-      wsManager.send({
-        seq: String(HISTORY_LIMIT),
-        msgId: '0',
-        cmd: Cmd.History,
-        from: uid,
-        to: peerId,
-        chatType,
-        msgType: MsgType.Text,
-        content: '',
-        timestamp: beforeTs,
-        needAck: false,
-      });
+      // Send history request, retrying if WS not yet connected
+      const sendHistoryRequest = () => {
+        const sent = wsManager.send({
+          seq: String(HISTORY_LIMIT),
+          msgId: '0',
+          cmd: Cmd.History,
+          from: uid,
+          to: peerId,
+          chatType,
+          msgType: MsgType.Text,
+          content: '',
+          timestamp: beforeTs,
+          needAck: false,
+        });
+        if (!sent) {
+          // WS not connected yet, retry in 300ms
+          if (!completeReceived) {
+            setTimeout(sendHistoryRequest, 300);
+          }
+        }
+      };
+      sendHistoryRequest();
 
       // Timeout fallback
       setTimeout(() => {
         if (!completeReceived) {
-          unsubChat();
           unsubHistory();
-          if (messages.length > 0) {
-            prependMessages(peerId, messages);
-          }
         }
-      }, 5000);
+      }, 8000);
     },
-    [uid, prependMessages, setNoMoreHistory],
+    [uid, setNoMoreHistory],
   );
 
   /** Send a read receipt */

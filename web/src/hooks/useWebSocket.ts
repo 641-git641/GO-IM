@@ -33,7 +33,7 @@ export function useWebSocket() {
   const initialized = useRef(false);
 
   useEffect(() => {
-    if (!isLoggedIn || initialized.current) return;
+    if (!isLoggedIn || !token || initialized.current) return;
     initialized.current = true;
 
     // Set up status callback
@@ -52,12 +52,15 @@ export function useWebSocket() {
       wsManager.disconnect();
       initialized.current = false;
     };
-  }, [isLoggedIn]);
+  }, [isLoggedIn, token]);
 
   function handleMessage(msg: IMMessage) {
     switch (msg.cmd) {
       case Cmd.Chat: {
-        const peerId = msg.chatType === ChatType.Group ? msg.to : msg.from;
+        // For single chat: if we sent this message (e.g., from history), peerId is msg.to.
+        // For live messages from others, msg.from is the sender (our peer).
+        const isGroup = msg.chatType === ChatType.Group;
+        const peerId = isGroup ? msg.to : (msg.from === uid ? msg.to : msg.from);
         upsertConversation(peerId, peerId, msg.chatType as ChatTypeValue);
 
         // Check for group notification
@@ -309,8 +312,8 @@ export function useWebSocket() {
           const friendStore = useFriendStore.getState();
           if (data.action === 'accept') {
             friendStore.addFriend({
-              uid,
-              friend_uid: data.from_uid || msg.from,
+              uid: data.from_uid || msg.from,
+              friend_uid: uid,
               status: 1,
               created_at: Date.now(),
             });
@@ -416,6 +419,49 @@ export function useWebSocket() {
         break;
       }
 
+      case Cmd.GroupInviteMember: {
+        // Response: {"group_id":"g_123","target_uid":"bob","inviter_uid":"alice","members":[...]}
+        try {
+          const data = JSON.parse(msg.content);
+          if (data.group_id) {
+            // Refresh group info to get updated member list
+            wsManager.send({
+              seq: '0', msgId: '0', cmd: Cmd.GroupInfo, from: uid, to: data.group_id,
+              chatType: ChatType.Group, msgType: MsgType.Text, content: '', timestamp: '0', needAck: false,
+            });
+            // If we are the invited user, add the group to our contact store
+            if (data.target_uid === uid) {
+              const contactStore = useContactStore.getState();
+              const existingGroup = contactStore.groups.find(g => g.id === data.group_id);
+              if (!existingGroup) {
+                // Request group list to pick up the new group
+                wsManager.send({
+                  seq: '0', msgId: '0', cmd: Cmd.GroupList, from: uid, to: '',
+                  chatType: ChatType.Group, msgType: MsgType.Text, content: '', timestamp: '0', needAck: false,
+                });
+              }
+            }
+            // System notice for member_joined
+            if (data.target_uid && data.target_uid !== uid) {
+              const notification: ChatMessage = {
+                ...msg,
+                chatType: ChatType.Group as ChatTypeValue,
+                msgType: MsgType.Text as MsgTypeValue,
+                status: 'sent',
+                recalled: false,
+                content: JSON.stringify({
+                  type: 'member_joined',
+                  group_id: data.group_id,
+                  uid: data.target_uid,
+                }),
+              };
+              addMessage(data.group_id, notification, uid);
+            }
+          }
+        } catch { /* ignore parse errors */ }
+        break;
+      }
+
       case Cmd.GroupLeave: {
         // Response: {"group_id":"g_123","uid":"bob","deleted":false}
         try {
@@ -464,9 +510,9 @@ export function useWebSocket() {
             contactStore.setGroupDetail({
               id: data.id,
               name: data.name,
-              ownerUid: data.owner_uid || data.ownerUid,
+              owner_uid: data.owner_uid || data.ownerUid,
               members: data.members || [],
-              createdAt: data.created_at || 0,
+              created_at: data.created_at || 0,
             });
             // Ensure conversation exists
             upsertConversation(data.id, data.name, ChatType.Group as ChatTypeValue);

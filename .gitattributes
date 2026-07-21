@@ -1,0 +1,27 @@
+# 所有文本文件统一使用 LF（Linux/Docker 兼容）
+* text=auto eol=lf
+
+# Go
+*.go text eol=lf
+
+# Proto
+*.proto text eol=lf
+
+# Web
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.svg text eol=lf
+
+# Config
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+Dockerfile* text eol=lf
+
+# Windows 二进制文件
+*.exe binary
+*.dll binary

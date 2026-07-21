@@ -38,9 +38,9 @@ func (s *MySQLGroupStore) newGroupID() string {
 	return fmt.Sprintf("g_%d", time.Now().UnixNano())
 }
 
-// CreateGroup creates a new group and adds the owner as the first member.
+// CreateGroup creates a new group and adds the owner and initial members.
 // Returns the created group row.
-func (s *MySQLGroupStore) CreateGroup(ctx context.Context, name, ownerUID string) (*GroupRow, error) {
+func (s *MySQLGroupStore) CreateGroup(ctx context.Context, name, ownerUID string, members []string) (*GroupRow, error) {
 	id := s.newGroupID()
 	now := time.Now().UnixMilli()
 
@@ -58,6 +58,7 @@ func (s *MySQLGroupStore) CreateGroup(ctx context.Context, name, ownerUID string
 		return nil, fmt.Errorf("insert group: %w", err)
 	}
 
+	// Insert owner as first member.
 	_, err = tx.ExecContext(ctx,
 		"INSERT INTO group_members (group_id, uid, joined_at) VALUES (?, ?, ?)",
 		id, ownerUID, now,
@@ -66,11 +67,25 @@ func (s *MySQLGroupStore) CreateGroup(ctx context.Context, name, ownerUID string
 		return nil, fmt.Errorf("insert owner member: %w", err)
 	}
 
+	// Insert initial members (excluding owner and empty strings).
+	for _, uid := range members {
+		if uid == "" || uid == ownerUID {
+			continue
+		}
+		_, err = tx.ExecContext(ctx,
+			"INSERT INTO group_members (group_id, uid, joined_at) VALUES (?, ?, ?)",
+			id, uid, now,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("insert member %s: %w", uid, err)
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit: %w", err)
 	}
 
-	log.Printf("[mysql_group] created group %s for owner %s", id, ownerUID)
+	log.Printf("[mysql_group] created group %s for owner %s with %d initial members", id, ownerUID, len(members))
 	return &GroupRow{ID: id, Name: name, OwnerUID: ownerUID, CreatedAt: now}, nil
 }
 

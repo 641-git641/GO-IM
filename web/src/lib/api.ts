@@ -8,8 +8,9 @@ import { getToken, getStoredUid } from './auth';
 type RequestMethod = 'GET' | 'POST';
 
 function getAuthParams(): URLSearchParams {
-  const uid = localStorage.getItem('im-uid') || '';
-  const token = localStorage.getItem('im-token') || '';
+  // Must match the keys defined in auth.ts (im_uid, im_token — underscores).
+  const uid = getStoredUid() || '';
+  const token = getToken() || '';
   return new URLSearchParams({ uid, token });
 }
 
@@ -29,7 +30,7 @@ async function request<T>(
     url = path + sep + authParams.toString();
   } else if (body instanceof URLSearchParams) {
     // Merge auth into the form body.
-    authParams.forEach((value, key) => { body.set(key, value); });
+    authParams.forEach((value, key) => { if (value) body.set(key, value); });
   }
   // FormData: auth is NOT injected — callers must pass uid/token manually.
 
@@ -46,7 +47,7 @@ async function request<T>(
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`API ${method} ${path} failed (${res.status}): ${text}`);
+    throw new Error(`请求失败 (${res.status}): ${text || '未知错误'}`);
   }
 
   return res.json();
@@ -66,8 +67,9 @@ export async function register(uid: string, username: string, password: string):
   return request<LoginResponse>('/register', 'POST', params);
 }
 
-export async function changePassword(uid: string, oldPassword: string, newPassword: string): Promise<{ status: string }> {
-  const params = new URLSearchParams({ uid, old_password: oldPassword, new_password: newPassword });
+export async function changePassword(oldPassword: string, newPassword: string): Promise<{ status: string }> {
+  const params = new URLSearchParams({ old_password: oldPassword, new_password: newPassword });
+  // request() auto-injects uid + token — backend validates JWT via authenticateRequest
   return request('/change-password', 'POST', params);
 }
 
@@ -88,33 +90,41 @@ export async function getHealth(): Promise<{
 
 // ---- Groups ----
 
-export async function createGroup(uid: string, name: string): Promise<GroupInfo> {
-  const params = new URLSearchParams({ uid, name });
+export async function createGroup(name: string, members?: string[]): Promise<GroupInfo> {
+  const params = new URLSearchParams({ name });
+  if (members && members.length > 0) {
+    params.set('members', members.join(','));
+  }
   return request('/group/create', 'POST', params);
 }
 
-export async function joinGroup(uid: string, groupId: string): Promise<{ ok: string }> {
-  const params = new URLSearchParams({ uid, group_id: groupId });
+export async function joinGroup(groupId: string): Promise<{ ok: string }> {
+  const params = new URLSearchParams({ group_id: groupId });
   return request('/group/join', 'POST', params);
 }
 
-export async function leaveGroup(uid: string, groupId: string): Promise<{ ok: string }> {
-  const params = new URLSearchParams({ uid, group_id: groupId });
+export async function inviteGroupMember(groupId: string, targetUid: string): Promise<{ ok: string }> {
+  const params = new URLSearchParams({ group_id: groupId, target_uid: targetUid });
+  return request('/group/invite', 'POST', params);
+}
+
+export async function leaveGroup(groupId: string): Promise<{ ok: string }> {
+  const params = new URLSearchParams({ group_id: groupId });
   return request('/group/leave', 'POST', params);
 }
 
-export async function kickGroupMember(uid: string, groupId: string, targetUid: string): Promise<{ ok: string }> {
-  const params = new URLSearchParams({ uid, group_id: groupId, target_uid: targetUid });
+export async function kickGroupMember(groupId: string, targetUid: string): Promise<{ ok: string }> {
+  const params = new URLSearchParams({ group_id: groupId, target_uid: targetUid });
   return request('/group/kick', 'POST', params);
 }
 
-export async function renameGroup(uid: string, groupId: string, name: string): Promise<{ ok: string; name: string }> {
-  const params = new URLSearchParams({ uid, group_id: groupId, name });
+export async function renameGroup(groupId: string, name: string): Promise<{ ok: string; name: string }> {
+  const params = new URLSearchParams({ group_id: groupId, name });
   return request('/group/rename', 'POST', params);
 }
 
-export async function transferGroup(uid: string, groupId: string, toUid: string): Promise<{ ok: string; owner_uid: string }> {
-  const params = new URLSearchParams({ uid, group_id: groupId, to_uid: toUid });
+export async function transferGroup(groupId: string, toUid: string): Promise<{ ok: string; owner_uid: string }> {
+  const params = new URLSearchParams({ group_id: groupId, to_uid: toUid });
   return request('/group/transfer', 'POST', params);
 }
 
@@ -122,8 +132,8 @@ export async function getGroupMembers(groupId: string): Promise<{ group_id: stri
   return request(`/group/members?group_id=${encodeURIComponent(groupId)}`);
 }
 
-export async function getGroupList(uid: string): Promise<{ groups: GroupListItem[] }> {
-  return request(`/group/list?uid=${encodeURIComponent(uid)}`);
+export async function getGroupList(): Promise<{ groups: GroupListItem[] }> {
+  return request('/group/list');
 }
 
 // ---- Files ----
@@ -152,14 +162,14 @@ export async function uploadFile(
         try {
           resolve(JSON.parse(xhr.responseText));
         } catch {
-          reject(new Error('Invalid JSON response'));
+          reject(new Error('服务器响应格式异常'));
         }
       } else {
-        reject(new Error(`Upload failed: ${xhr.status} ${xhr.responseText}`));
+        reject(new Error(`上传失败 (${xhr.status}): ${xhr.responseText || '未知错误'}`));
       }
     };
 
-    xhr.onerror = () => reject(new Error('Upload network error'));
+    xhr.onerror = () => reject(new Error('上传失败，网络连接异常'));
     xhr.open('POST', '/upload');
     xhr.send(formData);
   });
@@ -174,11 +184,9 @@ export function getFileURL(fileId: string, uid: string, token: string, thumb = f
 // ---- Search ----
 
 export async function searchMessages(
-  uid: string,
-  token: string,
   params: SearchParams,
 ): Promise<SearchResponse> {
-  const sp = new URLSearchParams({ uid, token, q: params.q });
+  const sp = new URLSearchParams({ q: params.q });
   if (params.peer) sp.set('peer', params.peer);
   if (params.chatType) sp.set('chat_type', String(params.chatType));
   if (params.msgType) sp.set('msg_type', String(params.msgType));
@@ -187,6 +195,7 @@ export async function searchMessages(
   if (params.cursor) sp.set('cursor', String(params.cursor));
   if (params.limit) sp.set('limit', String(params.limit));
 
+  // request() auto-injects uid + token via getAuthParams()
   return request(`/search?${sp.toString()}`);
 }
 
@@ -198,34 +207,34 @@ export interface FriendListResponse {
   pending_requests: { from_uid: string; username: string; created_at: number }[];
 }
 
-export async function sendFriendRequest(uid: string, toUid: string): Promise<{ status: string }> {
-  const params = new URLSearchParams({ uid, to_uid: toUid });
+export async function sendFriendRequest(toUid: string): Promise<{ status: string }> {
+  const params = new URLSearchParams({ to_uid: toUid });
   return request('/friend/request', 'POST', params);
 }
 
-export async function acceptFriendRequest(uid: string, fromUid: string): Promise<{ status: string }> {
-  const params = new URLSearchParams({ uid, from_uid: fromUid });
+export async function acceptFriendRequest(fromUid: string): Promise<{ status: string }> {
+  const params = new URLSearchParams({ from_uid: fromUid });
   return request('/friend/accept', 'POST', params);
 }
 
-export async function rejectFriendRequest(uid: string, fromUid: string): Promise<{ status: string }> {
-  const params = new URLSearchParams({ uid, from_uid: fromUid });
+export async function rejectFriendRequest(fromUid: string): Promise<{ status: string }> {
+  const params = new URLSearchParams({ from_uid: fromUid });
   return request('/friend/reject', 'POST', params);
 }
 
-export async function removeFriend(uid: string, friendUid: string): Promise<{ status: string }> {
-  const params = new URLSearchParams({ uid, friend_uid: friendUid });
+export async function removeFriend(friendUid: string): Promise<{ status: string }> {
+  const params = new URLSearchParams({ friend_uid: friendUid });
   return request('/friend/remove', 'POST', params);
 }
 
-export async function getFriendList(uid: string): Promise<FriendListResponse> {
-  return request(`/friend/list?uid=${encodeURIComponent(uid)}`);
+export async function getFriendList(): Promise<FriendListResponse> {
+  return request('/friend/list');
 }
 
 // ---- Unread ----
 
-export async function getUnreadCounts(uid: string): Promise<{ uid: string; counts: Record<string, number> }> {
-  return request(`/unread?uid=${encodeURIComponent(uid)}`);
+export async function getUnreadCounts(): Promise<{ uid: string; counts: Record<string, number> }> {
+  return request('/unread');
 }
 
 // ---- Admin ----

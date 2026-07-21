@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { useAdminStore } from '@/stores/adminStore';
-import { formatTime } from '@/lib/utils';
+import { formatTime, tryParseJSON } from '@/lib/utils';
 import type { AdminStats, AdminUser, SearchResultMessage } from '@/types';
 import {
   Activity,
@@ -28,11 +28,13 @@ export default function AdminPage() {
     users,
     usersTotal,
     usersLoading,
+    usersError,
     fetchUsers,
     removeUser,
     // Messages
     messages,
     messagesLoading,
+    messagesError,
     fetchMessages,
     removeMessage,
   } = useAdminStore();
@@ -107,6 +109,7 @@ export default function AdminPage() {
             users={users}
             total={usersTotal}
             loading={usersLoading}
+            error={usersError}
             onDelete={(targetUid) => { if (uid && token) removeUser(uid, token, targetUid); }}
             uid={uid}
             token={token}
@@ -116,6 +119,7 @@ export default function AdminPage() {
           <MessagesTab
             messages={messages}
             loading={messagesLoading}
+            error={messagesError}
             onDelete={(msgId) => { if (uid && token) removeMessage(uid, token, msgId); }}
           />
         )}
@@ -200,16 +204,20 @@ function DashboardTab({ stats, loading, error }: {
 
 // ---- Users Tab ----
 
-function UsersTab({ users, total, loading, onDelete, uid, token }: {
+function UsersTab({ users, total, loading, error, onDelete, uid, token }: {
   users: AdminUser[];
   total: number;
   loading: boolean;
+  error: string | null;
   onDelete: (targetUid: string) => void;
   uid: string;
   token: string;
 }) {
   if (loading) {
     return <div className="text-center py-12 text-sm text-gray-400">加载中...</div>;
+  }
+  if (error) {
+    return <div className="text-center py-12 text-sm text-red-500">加载失败: {error}</div>;
   }
 
   return (
@@ -289,13 +297,30 @@ function UsersTab({ users, total, loading, onDelete, uid, token }: {
 
 // ---- Messages Tab ----
 
-function MessagesTab({ messages, loading, onDelete }: {
+/** Extract human-readable text from message content (may be JSON) */
+function extractMessageText(content: string): string {
+  const parsed = tryParseJSON<{ text?: string; type?: string; name?: string; username?: string; uid?: string; from_uid?: string }>(content);
+  if (!parsed) return content;
+  if (parsed.text) return parsed.text;
+  if (parsed.type === 'friend_request') return `[好友请求] ${parsed.username || parsed.from_uid || ''}`;
+  if (parsed.type === 'friend_accepted') return '[已同意好友请求]';
+  if (parsed.type === 'group_created') return `[创建群组] ${parsed.name || ''}`;
+  if (parsed.type === 'member_joined') return `[${parsed.uid || ''} 加入群聊]`;
+  if (parsed.type === 'member_left') return `[${parsed.uid || ''} 退出群聊]`;
+  return content;
+}
+
+function MessagesTab({ messages, loading, error, onDelete }: {
   messages: SearchResultMessage[];
   loading: boolean;
+  error: string | null;
   onDelete: (msgId: string) => void;
 }) {
   if (loading) {
     return <div className="text-center py-12 text-sm text-gray-400">加载中...</div>;
+  }
+  if (error) {
+    return <div className="text-center py-12 text-sm text-red-500">加载失败: {error}</div>;
   }
 
   return (
@@ -322,7 +347,10 @@ function MessagesTab({ messages, loading, onDelete }: {
                 <td className="px-5 py-3 text-gray-700 dark:text-gray-300">{msg.from}</td>
                 <td className="px-5 py-3 text-gray-500 dark:text-gray-400 font-mono text-xs">{msg.to}</td>
                 <td className="px-5 py-3 text-gray-900 dark:text-gray-100 max-w-xs truncate">
-                  {msg.content.length > 60 ? msg.content.slice(0, 60) + '...' : msg.content}
+                  {(() => {
+                    const text = extractMessageText(msg.content);
+                    return text.length > 60 ? text.slice(0, 60) + '...' : text;
+                  })()}
                 </td>
                 <td className="px-5 py-3 text-xs text-gray-500 dark:text-gray-400">{formatTime(msg.timestamp)}</td>
                 <td className="px-5 py-3 text-right">

@@ -1,0 +1,187 @@
+package gateway
+
+import (
+	"math/rand"
+	"testing"
+)
+
+func TestHashRingGetConsistent(t *testing.T) {
+	hr := NewHashRing(150)
+	hr.Add("gw-1")
+	hr.Add("gw-2")
+	hr.Add("gw-3")
+
+	// Same key should always return the same node.
+	first := hr.Get("alice")
+	if first == "" {
+		t.Fatal("Get on non-empty ring returned empty")
+	}
+	for i := 0; i < 100; i++ {
+		if got := hr.Get("alice"); got != first {
+			t.Errorf("Get(\"alice\") inconsistent: first=%s, iteration %d=%s", first, i, got)
+		}
+	}
+}
+
+func TestHashRingGetDistribution(t *testing.T) {
+	hr := NewHashRing(150)
+	hr.Add("gw-1")
+	hr.Add("gw-2")
+	hr.Add("gw-3")
+
+	counts := map[string]int{"gw-1": 0, "gw-2": 0, "gw-3": 0}
+	const n = 3000
+
+	for i := 0; i < n; i++ {
+		uid := "user-" + string(rune('a'+i%26)) + string(rune('0'+i%10))
+		node := hr.Get(uid)
+		if node == "" {
+			t.Fatal("Get returned empty for non-empty ring")
+		}
+		counts[node]++
+	}
+
+	// With 150 virtual nodes each and 3000 keys, each node should get
+	// roughly 33% (1000 keys). Allow 25%-42% tolerance.
+	for node, count := range counts {
+		pct := float64(count) / float64(n) * 100
+		if pct < 25 || pct > 42 {
+			t.Errorf("node %s got %.1f%% of keys, expected ~33%% (25-42%% acceptable)", node, pct)
+		}
+	}
+}
+
+func TestHashRingEmpty(t *testing.T) {
+	hr := NewHashRing(150)
+	if got := hr.Get("alice"); got != "" {
+		t.Errorf("Get on empty ring expected \"\", got %q", got)
+	}
+	if hr.Len() != 0 {
+		t.Errorf("Len on empty ring expected 0, got %d", hr.Len())
+	}
+}
+
+func TestHashRingSingleNode(t *testing.T) {
+	hr := NewHashRing(150)
+	hr.Add("only-node")
+
+	if hr.Len() != 1 {
+		t.Errorf("Len expected 1, got %d", hr.Len())
+	}
+
+	for i := 0; i < 100; i++ {
+		uid := "user-" + string(rune('a'+i%26))
+		if got := hr.Get(uid); got != "only-node" {
+			t.Errorf("Get(%q) on single-node ring expected \"only-node\", got %q", uid, got)
+		}
+	}
+}
+
+func TestHashRingAddAndRemove(t *testing.T) {
+	hr := NewHashRing(150)
+
+	// 2 nodes: all keys distribute.
+	hr.Add("gw-1")
+	hr.Add("gw-2")
+	if hr.Len() != 2 {
+		t.Errorf("Len expected 2, got %d", hr.Len())
+	}
+
+	// Remove gw-2: all keys → gw-1.
+	hr.Remove("gw-2")
+	if hr.Len() != 1 {
+		t.Errorf("Len after remove expected 1, got %d", hr.Len())
+	}
+	for i := 0; i < 50; i++ {
+		uid := "user-" + string(rune('a'+i%26))
+		if got := hr.Get(uid); got != "gw-1" {
+			t.Errorf("Get(%q) after removing gw-2 expected \"gw-1\", got %q", uid, got)
+		}
+	}
+
+	// Re-add gw-2: keys redistribute.
+	hr.Add("gw-2")
+	if hr.Len() != 2 {
+		t.Errorf("Len after re-add expected 2, got %d", hr.Len())
+	}
+	seen := make(map[string]bool)
+	for i := 0; i < 100; i++ {
+		uid := "user-" + string(rune('a'+i%26))
+		seen[hr.Get(uid)] = true
+	}
+	if !seen["gw-1"] || !seen["gw-2"] {
+		t.Error("re-adding gw-2 did not redistribute keys")
+	}
+}
+
+func TestHashRingRemoveNonExistent(t *testing.T) {
+	hr := NewHashRing(150)
+	hr.Add("gw-1")
+	// Should not panic.
+	hr.Remove("nonexistent")
+	if hr.Len() != 1 {
+		t.Errorf("Len expected 1, got %d", hr.Len())
+	}
+}
+
+func TestHashRingReAdd(t *testing.T) {
+	hr := NewHashRing(150)
+	hr.Add("gw-1")
+	first := hr.Get("alice")
+
+	// Re-adding the same node should be idempotent.
+	hr.Add("gw-1")
+	if got := hr.Get("alice"); got != first {
+		t.Errorf("Re-adding same node changed routing: %s → %s", first, got)
+	}
+	if hr.Len() != 1 {
+		t.Errorf("Len after re-add expected 1, got %d", hr.Len())
+	}
+}
+
+func TestHashRingDefaultReplicas(t *testing.T) {
+	hr := NewHashRing(0) // 0 → default 150
+	if hr.replicas != 150 {
+		t.Errorf("default replicas expected 150, got %d", hr.replicas)
+	}
+
+	hr2 := NewHashRing(-1)
+	if hr2.replicas != 150 {
+		t.Errorf("default replicas expected 150, got %d", hr2.replicas)
+	}
+
+	hr3 := NewHashRing(50)
+	if hr3.replicas != 50 {
+		t.Errorf("custom replicas expected 50, got %d", hr3.replicas)
+	}
+}
+
+// Test that adding a node after keys are being looked up doesn't cause
+// issues (no data races, etc.)
+func TestHashRingConcurrentAddAndGet(t *testing.T) {
+	hr := NewHashRing(150)
+	hr.Add("gw-1")
+	hr.Add("gw-2")
+
+	done := make(chan struct{})
+	go func() {
+		for i := 0; i < 100; i++ {
+			hr.Add("gw-" + string(rune('a'+i%5)))
+			hr.Remove("gw-" + string(rune('a'+(i+2)%5)))
+		}
+		close(done)
+	}()
+
+	for i := 0; i < 1000; i++ {
+		uid := "user-" + string(rune('a'+i%26))
+		_ = hr.Get(uid)
+		_ = hr.Len()
+	}
+
+	<-done
+}
+
+func init() {
+	// Seed for distribution test.
+	_ = rand.Int()
+}

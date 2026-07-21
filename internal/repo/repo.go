@@ -9,12 +9,12 @@ import (
 
 // User represents a registered user.
 type User struct {
-	UID          string
-	Username     string
-	PasswordHash string
-	Role         string // "user" or "admin"
-	IsDisabled   bool
-	CreatedAt    int64 // unix millis
+	UID          string `json:"uid"`
+	Username     string `json:"username"`
+	PasswordHash string `json:"-"`
+	Role         string `json:"role"`         // "user" or "admin"
+	IsDisabled   bool   `json:"is_disabled"`
+	CreatedAt    int64  `json:"created_at"`   // unix millis
 }
 
 // UserStore manages user persistence.

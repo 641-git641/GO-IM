@@ -17,8 +17,8 @@ export default function ContactsPage() {
 
   useEffect(() => {
     if (!uid) return;
-    getGroupList(uid).then((data) => {
-      setGroups(data.groups);
+    getGroupList().then((data) => {
+      setGroups(data.groups || []);
     }).catch(() => {});
   }, [uid, setGroups]);
 

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useChatStore } from '@/stores/chatStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useContactStore } from '@/stores/contactStore';
@@ -9,6 +10,7 @@ import type { FileMetadata, GroupInfo, ChatMessage } from '@/types';
 import { wsManager } from '@/lib/ws';
 import TopBar from '@/components/layout/TopBar';
 import GroupInfoPanel from '@/components/group/GroupInfoPanel';
+import FriendInfoPanel from './FriendInfoPanel';
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
 import ForwardDialog from './ForwardDialog';
@@ -20,14 +22,16 @@ interface ChatWindowProps {
 
 export default function ChatWindow({ peerId }: ChatWindowProps) {
   const { uid } = useAuthStore();
+  const navigate = useNavigate();
   const conversations = useChatStore((s) => s.conversations);
   const typingUsers = useChatStore((s) => s.typingUsers);
   const { onlineUsers, groupDetails, getGroupDetail } = useContactStore();
   const { sendText, sendFile, loadHistory, sendReadReceipt, recallMessage, forwardMessage, editMessage } = useChat();
   const { upload, uploading, progress, reset: resetUpload } = useFileUpload();
-  const { resetUnread, deleteMessage } = useChatStore();
+  const { resetUnread, deleteMessage, markUnread, deleteConversation } = useChatStore();
 
   const [groupPanelOpen, setGroupPanelOpen] = useState(false);
+  const [friendPanelOpen, setFriendPanelOpen] = useState(false);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [typingUid, setTypingUid] = useState<string | null>(null);
   const [forwardMsg, setForwardMsg] = useState<ChatMessage | null>(null);
@@ -57,8 +61,8 @@ export default function ChatWindow({ peerId }: ChatWindowProps) {
   }, [peerId, typingUsers, uid]);
 
   const conv = conversations.get(peerId);
-  const chatType = conv?.chatType || ChatType.Single;
-  const isGroup = chatType === ChatType.Group;
+  const isGroup = peerId.startsWith('g_');
+  const chatType = isGroup ? ChatType.Group : (conv?.chatType || ChatType.Single);
 
   // Reset unread when viewing conversation
   useEffect(() => {
@@ -70,10 +74,38 @@ export default function ChatWindow({ peerId }: ChatWindowProps) {
     loadHistory(peerId, chatType);
   }, [peerId, chatType, loadHistory]);
 
-  // Get peer name
-  const peerName = peerId.startsWith('g_')
-    ? conv?.name || peerId
-    : peerId;
+  // Request group info on mount for groups (so name resolves after refresh)
+  useEffect(() => {
+    if (isGroup) {
+      // Request GroupInfo for this group
+      wsManager.send({
+        seq: '0', msgId: '0', cmd: Cmd.GroupInfo, from: uid, to: peerId,
+        chatType: ChatType.Group, msgType: MsgType.Text, content: '', timestamp: '0', needAck: false,
+      });
+      // Also request GroupList to populate all groups in contact store
+      wsManager.send({
+        seq: '0', msgId: '0', cmd: Cmd.GroupList, from: uid, to: '',
+        chatType: ChatType.Group, msgType: MsgType.Text, content: '', timestamp: '0', needAck: false,
+      });
+    }
+  }, [isGroup, peerId, uid]);
+
+  // Get peer name: check conversation name, contactStore groups, then fallback to peerId
+  const peerName = (() => {
+    if (peerId.startsWith('g_')) {
+      // Try conversation name first (non-raw-ID names)
+      if (conv?.name && conv.name !== peerId) return conv.name;
+      // Try contact store groups
+      const contactGroups = useContactStore.getState().groups;
+      const group = contactGroups.find(g => g.id === peerId);
+      if (group?.name) return group.name;
+      // Try group details
+      const detail = getGroupDetail(peerId);
+      if (detail?.name) return detail.name;
+      return peerId;
+    }
+    return peerId;
+  })();
 
   const isPeerOnline = !peerId.startsWith('g_') && onlineUsers.includes(peerId);
 
@@ -84,23 +116,26 @@ export default function ChatWindow({ peerId }: ChatWindowProps) {
     return detail?.members || [];
   }, [isGroup, peerId, groupDetails, getGroupDetail]);
 
-  // Fetch group info when opening the panel
-  const handleInfoClick = useCallback(() => {
-    if (!isGroup) return;
-    setGroupPanelOpen(true);
-    // Request group info via WebSocket
-    wsManager.send({
-      seq: '0',
-      msgId: '0',
-      cmd: Cmd.GroupInfo,
-      from: uid,
-      to: peerId,
-      chatType: ChatType.Group,
-      msgType: MsgType.Text,
-      content: '',
-      timestamp: '0',
-      needAck: false,
-    });
+  // Open settings panel (group or friend) when gear icon is clicked
+  const handleSettingsClick = useCallback(() => {
+    if (isGroup) {
+      setGroupPanelOpen(true);
+      // Request group info via WebSocket
+      wsManager.send({
+        seq: '0',
+        msgId: '0',
+        cmd: Cmd.GroupInfo,
+        from: uid,
+        to: peerId,
+        chatType: ChatType.Group,
+        msgType: MsgType.Text,
+        content: '',
+        timestamp: '0',
+        needAck: false,
+      });
+    } else {
+      setFriendPanelOpen(true);
+    }
   }, [isGroup, uid, peerId]);
 
   // Build group info for the panel
@@ -111,9 +146,9 @@ export default function ChatWindow({ peerId }: ChatWindowProps) {
       ? {
           id: peerId,
           name: conv.name,
-          ownerUid: '',
+          owner_uid: '',
           members: [],
-          createdAt: 0,
+          created_at: 0,
         }
       : null;
 
@@ -206,6 +241,15 @@ export default function ChatWindow({ peerId }: ChatWindowProps) {
     [peerId, deleteMessage],
   );
 
+  const handleMarkUnread = useCallback(() => {
+    markUnread(peerId);
+  }, [peerId, markUnread]);
+
+  const handleDeleteConversation = useCallback(() => {
+    deleteConversation(peerId);
+    navigate('/chat', { replace: true });
+  }, [peerId, deleteConversation, navigate]);
+
   // ---- In-conversation search ----
 
   const messages = conv?.messages || [];
@@ -274,7 +318,7 @@ export default function ChatWindow({ peerId }: ChatWindowProps) {
         peerName={peerName}
         chatType={chatType}
         isOnline={isPeerOnline}
-        onInfoClick={isGroup ? handleInfoClick : undefined}
+        onSettingsClick={handleSettingsClick}
       />
       {/* In-conversation search bar */}
       {searchQuery !== '' && (
@@ -326,6 +370,20 @@ export default function ChatWindow({ peerId }: ChatWindowProps) {
           group={groupInfo}
           open={groupPanelOpen}
           onClose={() => setGroupPanelOpen(false)}
+          onMarkUnread={handleMarkUnread}
+          onDeleteConversation={handleDeleteConversation}
+        />
+      )}
+
+      {/* Friend settings side panel */}
+      {!isGroup && (
+        <FriendInfoPanel
+          peerId={peerId}
+          peerName={peerName}
+          open={friendPanelOpen}
+          onClose={() => setFriendPanelOpen(false)}
+          onMarkUnread={handleMarkUnread}
+          onDeleteConversation={handleDeleteConversation}
         />
       )}
 

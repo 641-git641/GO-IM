@@ -1,37 +1,36 @@
-import { useState } from 'react';
 import type { Conversation } from '@/types';
-import { ChatType, MsgType } from '@/types';
+import { ChatType } from '@/types';
 import { formatDate, getAvatarLetters } from '@/lib/utils';
-import { Users, X, MessageSquareDot } from 'lucide-react';
+import { useContactStore } from '@/stores/contactStore';
+import { Users } from 'lucide-react';
 
 interface ConversationItemProps {
   conversation: Conversation;
   isActive: boolean;
   onClick: () => void;
-  onDelete?: (peerId: string) => void;
-  onMarkUnread?: (peerId: string) => void;
 }
 
-export default function ConversationItem({ conversation, isActive, onClick, onDelete, onMarkUnread }: ConversationItemProps) {
+export default function ConversationItem({ conversation, isActive, onClick }: ConversationItemProps) {
   const { name, peerId, lastMessage, lastTime, unread, chatType } = conversation;
-  const avatar = getAvatarLetters(name);
-  const [showDelete, setShowDelete] = useState(false);
+  const contactStore = useContactStore();
 
-  const handleDelete = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onDelete?.(peerId);
-  };
+  // Resolve display name: for groups, prefer contactStore name over raw peerId
+  const displayName = (() => {
+    if (name && name !== peerId) return name;
+    if (peerId.startsWith('g_')) {
+      const group = contactStore.groups.find(g => g.id === peerId);
+      if (group?.name) return group.name;
+      const detail = contactStore.getGroupDetail(peerId);
+      if (detail?.name) return detail.name;
+    }
+    return name || peerId;
+  })();
 
-  const handleMarkUnread = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onMarkUnread?.(peerId);
-  };
+  const avatar = getAvatarLetters(displayName);
 
   return (
     <button
       onClick={onClick}
-      onMouseEnter={() => setShowDelete(true)}
-      onMouseLeave={() => setShowDelete(false)}
       className={`w-full px-4 py-3 flex items-center gap-3 text-left transition-colors group relative ${
         isActive ? 'bg-primary-50 dark:bg-primary-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800'
       }`}
@@ -51,7 +50,7 @@ export default function ConversationItem({ conversation, isActive, onClick, onDe
       {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{name}</h3>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{displayName}</h3>
           <span className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0 ml-2">
             {formatDate(lastTime)}
           </span>
@@ -65,28 +64,6 @@ export default function ConversationItem({ conversation, isActive, onClick, onDe
           )}
         </div>
       </div>
-
-      {/* Delete button (appears on hover) */}
-      {showDelete && onDelete && (
-        <div
-          onClick={handleDelete}
-          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-red-100 dark:hover:bg-red-900/30 text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors cursor-pointer"
-          title="删除会话"
-        >
-          <X className="w-4 h-4" />
-        </div>
-      )}
-
-      {/* Mark unread button (appears on hover, to the left of delete) */}
-      {showDelete && onMarkUnread && unread === 0 && (
-        <div
-          onClick={handleMarkUnread}
-          className="absolute right-9 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-blue-100 dark:hover:bg-blue-900/30 text-gray-400 dark:text-gray-500 hover:text-blue-500 dark:hover:text-blue-400 transition-colors cursor-pointer"
-          title="标为未读"
-        >
-          <MessageSquareDot className="w-4 h-4" />
-        </div>
-      )}
     </button>
   );
 }

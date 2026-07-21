@@ -16,29 +16,23 @@ export default function ContactList() {
   const [processingUid, setProcessingUid] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  // Deduplicate and filter out self
-  const allUsers = [...new Set(onlineUsers)].filter((u) => u !== uid);
-
   // Load friend data
   useEffect(() => {
     if (!uid) return;
-    getFriendList(uid)
+    getFriendList()
       .then((data) => {
-        setFriends(data.friends);
-        setPendingRequests(data.pending_requests);
+        setFriends(data.friends || []);
+        setPendingRequests(data.pending_requests || []);
       })
       .catch(() => {});
   }, [uid, setFriends, setPendingRequests]);
-
-  // Friend UIDs for quick lookup
-  const friendUids = new Set(friends.map((f) => f.friend_uid));
 
   const handleAccept = async (fromUid: string) => {
     if (!uid) return;
     setProcessingUid(fromUid);
     try {
-      await acceptFriendRequest(uid, fromUid);
-      addFriend({ uid, friend_uid: fromUid, status: 1, created_at: Date.now() });
+      await acceptFriendRequest(fromUid);
+      addFriend({ uid: fromUid, friend_uid: uid, status: 1, created_at: Date.now() });
       removePendingRequest(fromUid);
       // Notify via WebSocket.
       wsManager.send({
@@ -64,7 +58,7 @@ export default function ContactList() {
     if (!uid) return;
     setProcessingUid(fromUid);
     try {
-      await rejectFriendRequest(uid, fromUid);
+      await rejectFriendRequest(fromUid);
       removePendingRequest(fromUid);
     } catch {
       // ignore
@@ -72,8 +66,6 @@ export default function ContactList() {
       setProcessingUid(null);
     }
   };
-  const hasPendingSet = new Set(pendingRequests.map((r) => r.from_uid));
-
   return (
     <div className="flex-1 overflow-y-auto">
       {/* Pending requests section */}
@@ -123,29 +115,11 @@ export default function ContactList() {
           </div>
           {friends.map((f) => (
             <ContactItem
-              key={f.friend_uid}
-              uid={f.friend_uid}
-              name={f.friend_uid}
-              isOnline={onlineUsers.includes(f.friend_uid)}
-              onClick={() => navigate(`/user/${f.friend_uid}`)}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Online users section */}
-      {allUsers.length > 0 && (
-        <div>
-          <div className="px-4 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-800 sticky top-0">
-            在线用户 · {allUsers.length}
-          </div>
-          {allUsers.map((userUid) => (
-            <ContactItem
-              key={userUid}
-              uid={userUid}
-              name={friendUids.has(userUid) ? userUid + ' (好友)' : userUid}
-              isOnline={true}
-              onClick={() => navigate(`/user/${userUid}`)}
+              key={f.uid}
+              uid={f.uid}
+              name={f.uid}
+              isOnline={onlineUsers.includes(f.uid)}
+              onClick={() => navigate(`/user/${f.uid}`)}
             />
           ))}
         </div>
@@ -171,9 +145,9 @@ export default function ContactList() {
         </div>
       )}
 
-      {allUsers.length === 0 && friends.length === 0 && groups.length === 0 && (
+      {pendingRequests.length === 0 && friends.length === 0 && groups.length === 0 && (
         <div className="flex items-center justify-center h-32">
-          <p className="text-sm text-gray-400">暂无联系人在线</p>
+          <p className="text-sm text-gray-400">暂无好友或群组，请先添加好友</p>
         </div>
       )}
     </div>

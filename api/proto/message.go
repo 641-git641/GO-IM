@@ -29,6 +29,9 @@ const (
 	// File message.
 	CmdFile int32 = 17 // file reference message (goes through full chat pipeline)
 
+	// Group invite (owner invites a third party to an existing group).
+	CmdGroupInviteMember int32 = 18 // invite a user to a group (owner only)
+
 	// Message recall.
 	CmdRecall int32 = 19 // recall a previously sent message (within configured recall window)
 

@@ -1,21 +1,24 @@
 import { useState } from 'react';
-import { X, UserPlus, UserMinus, Check, AlertCircle, Edit3, UserCheck } from 'lucide-react';
+import { X, UserPlus, UserMinus, Check, AlertCircle, Edit3, UserCheck, MessageSquareDot, Trash2 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { wsManager } from '@/lib/ws';
-import { kickGroupMember, renameGroup, transferGroup } from '@/lib/api';
+import { kickGroupMember, renameGroup, transferGroup, inviteGroupMember, getFriendList } from '@/lib/api';
 import { Cmd, ChatType, MsgType } from '@/types';
-import type { GroupInfo } from '@/types';
+import type { GroupInfo, Friend } from '@/types';
 
 interface GroupInfoPanelProps {
   group: GroupInfo;
   open: boolean;
   onClose: () => void;
+  onMarkUnread?: () => void;
+  onDeleteConversation?: () => void;
 }
 
-export default function GroupInfoPanel({ group, open, onClose }: GroupInfoPanelProps) {
+export default function GroupInfoPanel({ group, open, onClose, onMarkUnread, onDeleteConversation }: GroupInfoPanelProps) {
   const { uid } = useAuthStore();
   const [showAddMember, setShowAddMember] = useState(false);
-  const [newMemberUid, setNewMemberUid] = useState('');
+  const [friends, setFriendsLocal] = useState<Friend[]>([]);
+  const [selectedFriends, setSelectedFriends] = useState<Set<string>>(new Set());
   const [addStatus, setAddStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [adding, setAdding] = useState(false);
   const [kicking, setKicking] = useState<string | null>(null); // uid being kicked
@@ -26,46 +29,91 @@ export default function GroupInfoPanel({ group, open, onClose }: GroupInfoPanelP
 
   if (!open) return null;
 
-  const isOwner = uid === group.ownerUid;
+  const isOwner = uid === group.owner_uid;
 
-  const handleAddMember = async () => {
-    if (!newMemberUid.trim()) return;
+  // Load friends and filter out existing group members when the add form opens
+  const handleToggleAddMember = () => {
+    setShowAddMember(!showAddMember);
+    if (!showAddMember) {
+      setAddStatus(null);
+      setSelectedFriends(new Set());
+      getFriendList()
+        .then((data) => {
+          setFriendsLocal(data.friends || []);
+        })
+        .catch(() => {});
+    }
+  };
+
+  // Get friends not already in the group
+  const nonMemberFriends = friends.filter((f) => !group.members.includes(f.uid));
+
+  const toggleFriend = (friendUid: string) => {
+    setSelectedFriends((prev) => {
+      const next = new Set(prev);
+      if (next.has(friendUid)) {
+        next.delete(friendUid);
+      } else {
+        next.add(friendUid);
+      }
+      return next;
+    });
+  };
+
+  const handleAddMembers = async () => {
+    if (selectedFriends.size === 0) return;
     setAddStatus(null);
     setAdding(true);
 
-    try {
-      // Use HTTP API to add member
-      const res = await fetch('/group/join', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ uid: newMemberUid.trim(), group_id: group.id }),
-      });
+    const targets = Array.from(selectedFriends);
+    let successCount = 0;
+    const errors: string[] = [];
 
-      if (res.ok) {
-        setAddStatus({ type: 'success', text: `${newMemberUid} 已加入群组` });
-        setNewMemberUid('');
-        // Refresh group info via WebSocket
+    for (const targetUid of targets) {
+      try {
+        await inviteGroupMember(group.id, targetUid);
+        successCount++;
+        // Also notify via WebSocket for real-time delivery
         wsManager.send({
           seq: '0',
           msgId: '0',
-          cmd: Cmd.GroupInfo,
+          cmd: Cmd.GroupInviteMember,
           from: uid,
           to: group.id,
           chatType: ChatType.Group,
           msgType: MsgType.Text,
-          content: '',
-          timestamp: '0',
+          content: JSON.stringify({ target_uid: targetUid }),
+          timestamp: String(Date.now()),
           needAck: false,
         });
-      } else {
-        const text = await res.text();
-        setAddStatus({ type: 'error', text: text || '添加失败' });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : '邀请失败';
+        errors.push(`${targetUid}: ${msg}`);
       }
-    } catch {
-      setAddStatus({ type: 'error', text: '网络错误' });
-    } finally {
-      setAdding(false);
     }
+
+    if (errors.length > 0) {
+      setAddStatus({ type: 'error', text: errors.join('; ') });
+    } else {
+      setAddStatus({ type: 'success', text: `已邀请 ${successCount} 位好友` });
+      setSelectedFriends(new Set());
+    }
+
+    // Refresh group info
+    wsManager.send({
+      seq: '0',
+      msgId: '0',
+      cmd: Cmd.GroupInfo,
+      from: uid,
+      to: group.id,
+      chatType: ChatType.Group,
+      msgType: MsgType.Text,
+      content: '',
+      timestamp: '0',
+      needAck: false,
+    });
+
+    setAdding(false);
   };
 
   const handleKick = async (targetUid: string) => {
@@ -73,7 +121,7 @@ export default function GroupInfoPanel({ group, open, onClose }: GroupInfoPanelP
     setKicking(targetUid);
 
     try {
-      await kickGroupMember(uid, group.id, targetUid);
+      await kickGroupMember(group.id, targetUid);
       // Refresh group info
       wsManager.send({
         seq: '0',
@@ -103,7 +151,7 @@ export default function GroupInfoPanel({ group, open, onClose }: GroupInfoPanelP
     }
     setRenamingLoading(true);
     try {
-      await renameGroup(uid, group.id, newGroupName.trim());
+      await renameGroup(group.id, newGroupName.trim());
       // Refresh group info
       wsManager.send({
         seq: '0', msgId: '0', cmd: Cmd.GroupInfo, from: uid, to: group.id,
@@ -122,7 +170,7 @@ export default function GroupInfoPanel({ group, open, onClose }: GroupInfoPanelP
     if (!confirm(`确定要将群主转让给 ${toUid} 吗？此操作不可撤销。`)) return;
     setTransferring(toUid);
     try {
-      await transferGroup(uid, group.id, toUid);
+      await transferGroup(group.id, toUid);
       // Refresh group info
       wsManager.send({
         seq: '0', msgId: '0', cmd: Cmd.GroupInfo, from: uid, to: group.id,
@@ -204,7 +252,7 @@ export default function GroupInfoPanel({ group, open, onClose }: GroupInfoPanelP
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">群主</span>
-              <span className="font-medium">{group.ownerUid}</span>
+              <span className="font-medium">{group.owner_uid}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">成员</span>
@@ -213,7 +261,7 @@ export default function GroupInfoPanel({ group, open, onClose }: GroupInfoPanelP
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">创建时间</span>
               <span className="font-medium">
-                {new Date(group.createdAt).toLocaleDateString('zh-CN')}
+                {new Date(group.created_at).toLocaleDateString('zh-CN')}
               </span>
             </div>
           </div>
@@ -224,35 +272,61 @@ export default function GroupInfoPanel({ group, open, onClose }: GroupInfoPanelP
               <h4 className="text-sm font-semibold text-gray-900">
                 成员 ({group.members.length})
               </h4>
-              <button
-                onClick={() => setShowAddMember(!showAddMember)}
-                className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 font-medium"
-              >
-                <UserPlus className="w-3.5 h-3.5" />
-                添加
-              </button>
+              {isOwner && (
+                <button
+                  onClick={handleToggleAddMember}
+                  className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 font-medium"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  邀请好友
+                </button>
+              )}
             </div>
 
-            {/* Add member form */}
+            {/* Add member form — friend picker */}
             {showAddMember && (
               <div className="mb-3 p-3 bg-gray-50 rounded-lg space-y-2">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newMemberUid}
-                    onChange={(e) => setNewMemberUid(e.target.value)}
-                    placeholder="输入用户 UID"
-                    className="flex-1 px-2.5 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-primary-400"
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddMember()}
-                  />
-                  <button
-                    onClick={handleAddMember}
-                    disabled={adding || !newMemberUid.trim()}
-                    className="px-3 py-1.5 bg-primary-500 text-white text-sm font-medium rounded-lg hover:bg-primary-600 disabled:opacity-50 transition-colors"
-                  >
-                    {adding ? '...' : '添加'}
-                  </button>
-                </div>
+                {nonMemberFriends.length === 0 ? (
+                  <p className="text-xs text-gray-400 py-1">
+                    {friends.length === 0 ? '暂无好友，请先在通讯录中添加好友' : '所有好友已在群组中'}
+                  </p>
+                ) : (
+                  <div className="space-y-1 max-h-48 overflow-y-auto border border-gray-200 rounded-lg bg-white">
+                    {nonMemberFriends.map((f) => {
+                      const isSelected = selectedFriends.has(f.uid);
+                      return (
+                        <button
+                          key={f.uid}
+                          type="button"
+                          onClick={() => toggleFriend(f.uid)}
+                          className={`w-full flex items-center gap-3 px-3 py-2 text-sm transition-colors ${
+                            isSelected
+                              ? 'bg-primary-50 text-primary-700'
+                              : 'hover:bg-gray-50 text-gray-700'
+                          }`}
+                        >
+                          <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                            isSelected
+                              ? 'bg-primary-500 border-primary-500'
+                              : 'border-gray-300'
+                          }`}>
+                            {isSelected && <Check className="w-3 h-3 text-white" />}
+                          </div>
+                          <span className="truncate">{f.uid}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <button
+                  onClick={handleAddMembers}
+                  disabled={adding || selectedFriends.size === 0}
+                  className="w-full py-1.5 bg-primary-500 text-white text-sm font-medium rounded-lg hover:bg-primary-600 disabled:opacity-50 transition-colors"
+                >
+                  {adding ? '邀请中...' : selectedFriends.size > 0 ? `邀请 (${selectedFriends.size}人)` : '选择好友'}
+                </button>
+
                 {addStatus && (
                   <div
                     className={`flex items-center gap-1 text-xs ${
@@ -280,13 +354,13 @@ export default function GroupInfoPanel({ group, open, onClose }: GroupInfoPanelP
                     {member.slice(0, 2).toUpperCase()}
                   </div>
                   <span className="text-sm text-gray-900 flex-1">{member}</span>
-                  {member === group.ownerUid && (
+                  {member === group.owner_uid && (
                     <span className="text-[10px] px-1.5 py-0.5 bg-primary-100 text-primary-700 rounded-full">
                       群主
                     </span>
                   )}
                   {/* Transfer button: visible to owner only, for non-owner members */}
-                  {isOwner && member !== uid && member !== group.ownerUid && (
+                  {isOwner && member !== uid && member !== group.owner_uid && (
                     <button
                       onClick={() => handleTransfer(member)}
                       disabled={transferring === member}
@@ -310,6 +384,33 @@ export default function GroupInfoPanel({ group, open, onClose }: GroupInfoPanelP
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Conversation actions */}
+          <div className="pt-3 border-t border-gray-200 space-y-2">
+            {onMarkUnread && (
+              <button
+                onClick={() => { onMarkUnread(); onClose(); }}
+                className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-sm text-blue-600 hover:bg-blue-50 transition-colors"
+              >
+                <MessageSquareDot className="w-4 h-4" />
+                标为未读
+              </button>
+            )}
+            {onDeleteConversation && (
+              <button
+                onClick={() => {
+                  if (confirm('确定要删除该会话吗？消息记录将被清除。')) {
+                    onDeleteConversation();
+                    onClose();
+                  }
+                }}
+                className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-sm text-red-500 hover:bg-red-50 transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+                删除会话
+              </button>
+            )}
           </div>
         </div>
       </div>

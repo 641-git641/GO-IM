@@ -72,6 +72,25 @@ export function isGroupNotification(
   return null;
 }
 
+/**
+ * Check if content is a system-level message (group notifications,
+ * friend requests, group creation, etc.) that should be rendered
+ * as a centered notice rather than a chat bubble.
+ */
+export function isSystemMessage(content: string): string | null {
+  const parsed = tryParseJSON<{ type?: string }>(content);
+  if (!parsed?.type) return null;
+
+  const systemTypes = [
+    'member_joined',
+    'member_left',
+    'friend_request',
+    'friend_accepted',
+    'group_created',
+  ];
+  return systemTypes.includes(parsed.type) ? parsed.type : null;
+}
+
 /** Check if a message is a recalled message */
 export function isRecalled(content: string): boolean {
   const parsed = tryParseJSON<{ recalled: boolean }>(content);

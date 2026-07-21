@@ -21,14 +21,14 @@ export const useFriendStore = create<FriendState>((set, get) => ({
   addFriend: (friend) =>
     set((s) => {
       const exists = s.friends.some(
-        (f) => f.friend_uid === friend.friend_uid,
+        (f) => f.uid === friend.uid,
       );
       if (exists) return s;
       return { friends: [...s.friends, friend] };
     }),
   removeFriend: (friendUid) =>
     set((s) => ({
-      friends: s.friends.filter((f) => f.friend_uid !== friendUid),
+      friends: s.friends.filter((f) => f.uid !== friendUid),
     })),
   setPendingRequests: (requests) => set({ pendingRequests: requests }),
   addPendingRequest: (request) =>

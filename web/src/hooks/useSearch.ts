@@ -17,10 +17,10 @@ export function useSearch() {
       setError(null);
 
       try {
-        const data = await searchMessages(uid, token, params);
+        const data = await searchMessages(params);
         setResults(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Search failed');
+        setError(err instanceof Error ? err.message : '搜索失败');
         setResults(null);
       } finally {
         setSearching(false);
@@ -33,7 +33,7 @@ export function useSearch() {
     async (params: SearchParams) => {
       if (!results?.next_cursor || !uid || !token) return;
 
-      const data = await searchMessages(uid, token, {
+      const data = await searchMessages({
         ...params,
         cursor: results.next_cursor,
       });

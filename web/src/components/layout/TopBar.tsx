@@ -1,5 +1,5 @@
 import { useParams } from 'react-router-dom';
-import { Phone, Info } from 'lucide-react';
+import { Phone, Settings } from 'lucide-react';
 import { ChatType } from '@/types';
 
 interface TopBarProps {
@@ -7,11 +7,11 @@ interface TopBarProps {
   chatType?: number;
   isOnline?: boolean;
   onCall?: () => void;
-  /** Called when the Info button is clicked (group chat details panel) */
-  onInfoClick?: () => void;
+  /** Called when the Settings gear is clicked (group chat → GroupInfoPanel, single chat → FriendInfoPanel) */
+  onSettingsClick?: () => void;
 }
 
-export default function TopBar({ peerName, chatType = 1, isOnline = false, onCall, onInfoClick }: TopBarProps) {
+export default function TopBar({ peerName, chatType = 1, isOnline = false, onCall, onSettingsClick }: TopBarProps) {
 
   return (
     <div className="h-14 px-4 flex items-center justify-between border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex-shrink-0">
@@ -42,16 +42,11 @@ export default function TopBar({ peerName, chatType = 1, isOnline = false, onCal
           </button>
         )}
         <button
-          onClick={onInfoClick}
-          className={'p-2 rounded-lg transition-colors ' + (
-            chatType === ChatType.Group
-              ? 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-primary-600 dark:hover:text-primary-400 cursor-pointer'
-              : 'text-gray-300 dark:text-gray-600 cursor-default'
-          )}
-          title={chatType === ChatType.Group ? '群组信息' : '聊天详情'}
-          disabled={!onInfoClick}
+          onClick={onSettingsClick}
+          className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+          title={chatType === ChatType.Group ? '群组设置' : '好友设置'}
         >
-          <Info className="w-5 h-5" />
+          <Settings className="w-5 h-5" />
         </button>
       </div>
     </div>

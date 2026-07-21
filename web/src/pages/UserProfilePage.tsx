@@ -25,7 +25,7 @@ export default function UserProfilePage() {
   const isSelf = profileUid === myUid;
 
   // Determine friendship status
-  const friendRel = friends.find((f) => f.friend_uid === profileUid);
+  const friendRel = friends.find((f) => f.uid === profileUid);
   const isFriend = !!friendRel;
   const pendingReq = pendingRequests.find((r) => r.from_uid === profileUid);
   const hasPending = !!pendingReq;
@@ -33,7 +33,7 @@ export default function UserProfilePage() {
   const loadFriendData = useCallback(async () => {
     if (!myUid) return;
     try {
-      const data = await getFriendList(myUid);
+      const data = await getFriendList();
       setFriends(data.friends);
       setPendingRequests(data.pending_requests);
     } catch {
@@ -52,7 +52,7 @@ export default function UserProfilePage() {
     setActionLoading(true);
     setError('');
     try {
-      await sendFriendRequest(myUid, profileUid);
+      await sendFriendRequest(profileUid);
       // Also notify via WebSocket
       wsManager.send({
         seq: '0',
@@ -79,8 +79,8 @@ export default function UserProfilePage() {
     setActionLoading(true);
     setError('');
     try {
-      await acceptFriendRequest(myUid, profileUid);
-      addFriend({ uid: myUid, friend_uid: profileUid, status: 1, created_at: Date.now() });
+      await acceptFriendRequest(profileUid);
+      addFriend({ uid: profileUid, friend_uid: myUid, status: 1, created_at: Date.now() });
       removePendingRequest(profileUid);
       // Notify via WebSocket
       wsManager.send({
@@ -109,7 +109,7 @@ export default function UserProfilePage() {
     setActionLoading(true);
     setError('');
     try {
-      await removeFriend(myUid, profileUid);
+      await removeFriend(profileUid);
       removeFriendFromStore(profileUid);
       setError('已删除好友');
     } catch (err) {

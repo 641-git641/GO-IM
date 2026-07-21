@@ -69,7 +69,7 @@ export const useAdminStore = create<AdminState>((set, get) => ({
     set({ usersLoading: true, usersError: null });
     try {
       const data = await getAdminUsers(uid, token, offset, limit);
-      set({ users: data.users, usersTotal: data.total, usersLoading: false });
+      set({ users: data.users || [], usersTotal: data.total, usersLoading: false });
     } catch (e) {
       set({ usersError: (e as Error).message, usersLoading: false });
     }
@@ -84,7 +84,7 @@ export const useAdminStore = create<AdminState>((set, get) => ({
     set({ messagesLoading: true, messagesError: null });
     try {
       const data = await getAdminMessages(uid, token, before, limit);
-      set({ messages: data.messages, messagesLoading: false });
+      set({ messages: data.messages || [], messagesLoading: false });
     } catch (e) {
       set({ messagesError: (e as Error).message, messagesLoading: false });
     }

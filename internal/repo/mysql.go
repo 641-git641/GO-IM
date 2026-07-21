@@ -308,7 +308,7 @@ func (s *MySQLStore) QueryHistory(ctx context.Context, uid1, uid2 string, before
 	}
 	defer rows.Close()
 
-	var msgs []*proto.Message
+	msgs := make([]*proto.Message, 0)
 	for rows.Next() {
 		m := &proto.Message{}
 		var needAck, recalled int
@@ -351,7 +351,7 @@ func (s *MySQLStore) QueryGroupHistory(ctx context.Context, groupID string, befo
 	}
 	defer rows.Close()
 
-	var msgs []*proto.Message
+	msgs := make([]*proto.Message, 0)
 	for rows.Next() {
 		m := &proto.Message{}
 		var needAck, recalled int
@@ -444,7 +444,7 @@ func (s *MySQLStore) SearchMessages(ctx context.Context, params *SearchParams) (
 	}
 	defer rows.Close()
 
-	var msgs []*proto.Message
+	msgs := make([]*proto.Message, 0)
 	for rows.Next() {
 		m := &proto.Message{}
 		var needAck, recalled int
@@ -580,7 +580,7 @@ func (s *MySQLStore) GetFriends(ctx context.Context, uid string) ([]*Friend, err
 	}
 	defer rows.Close()
 
-	var friends []*Friend
+	friends := make([]*Friend, 0)
 	for rows.Next() {
 		f := &Friend{}
 		var status int32
@@ -612,7 +612,7 @@ func (s *MySQLStore) GetPendingRequests(ctx context.Context, uid string) ([]*Fri
 	}
 	defer rows.Close()
 
-	var requests []*FriendRequest
+	requests := make([]*FriendRequest, 0)
 	for rows.Next() {
 		req := &FriendRequest{}
 		if err := rows.Scan(&req.FromUID, &req.CreatedAt, &req.Username); err != nil {
@@ -648,7 +648,7 @@ func (s *MySQLStore) ListUsers(ctx context.Context, offset, limit int) ([]*User,
 	}
 	defer rows.Close()
 
-	var users []*User
+	users := make([]*User, 0)
 	for rows.Next() {
 		u := &User{}
 		if err := rows.Scan(&u.UID, &u.Username, &u.PasswordHash, &u.Role, &u.IsDisabled, &u.CreatedAt); err != nil {
@@ -732,7 +732,7 @@ func (s *MySQLStore) BrowseMessages(ctx context.Context, before int64, limit int
 	}
 	defer rows.Close()
 
-	var msgs []*proto.Message
+	msgs := make([]*proto.Message, 0)
 	for rows.Next() {
 		m := &proto.Message{}
 		var needAck, recalled int

@@ -7,27 +7,27 @@ const UID_KEY = 'im_uid';
 const USERNAME_KEY = 'im_username';
 
 export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+  return sessionStorage.getItem(TOKEN_KEY);
 }
 
 export function getStoredUid(): string | null {
-  return localStorage.getItem(UID_KEY);
+  return sessionStorage.getItem(UID_KEY);
 }
 
 export function getStoredUsername(): string | null {
-  return localStorage.getItem(USERNAME_KEY);
+  return sessionStorage.getItem(USERNAME_KEY);
 }
 
 export function saveAuth(uid: string, username: string, token: string): void {
-  localStorage.setItem(TOKEN_KEY, token);
-  localStorage.setItem(UID_KEY, uid);
-  localStorage.setItem(USERNAME_KEY, username);
+  sessionStorage.setItem(TOKEN_KEY, token);
+  sessionStorage.setItem(UID_KEY, uid);
+  sessionStorage.setItem(USERNAME_KEY, username);
 }
 
 export function clearAuth(): void {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(UID_KEY);
-  localStorage.removeItem(USERNAME_KEY);
+  sessionStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(UID_KEY);
+  sessionStorage.removeItem(USERNAME_KEY);
 }
 
 /** Check if the stored JWT is expired (simple client-side check) */

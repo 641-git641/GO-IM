@@ -64,7 +64,7 @@ export default function SettingsPage() {
 
     setChanging(true);
     try {
-      await changePassword(uid, oldPassword, newPassword);
+      await changePassword(oldPassword, newPassword);
       setPasswordMsg({ type: 'success', text: '密码修改成功' });
       setOldPassword('');
       setNewPassword('');

@@ -32,7 +32,7 @@ export default function AddFriendDialog({ open, onClose }: AddFriendDialogProps)
     setError('');
 
     try {
-      await sendFriendRequest(myUid, trimmed);
+      await sendFriendRequest(trimmed);
       // Real-time notification via WebSocket.
       wsManager.send({
         seq: '0',

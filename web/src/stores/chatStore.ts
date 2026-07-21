@@ -5,7 +5,7 @@
 import { create } from 'zustand';
 import type { ChatMessage, Conversation, ChatTypeValue, MsgTypeValue, CmdType } from '@/types';
 import { Cmd, ChatType, MsgType } from '@/types';
-import { bigintToString, formatTime } from '@/lib/utils';
+import { bigintToString, formatTime, tryParseJSON } from '@/lib/utils';
 
 interface ChatState {
   /** Map of peerId → Conversation */
@@ -95,7 +95,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   upsertConversation: (peerId, name, chatType) => {
     const conversations = new Map(get().conversations);
-    if (!conversations.has(peerId)) {
+    const existing = conversations.get(peerId);
+    if (!existing) {
       conversations.set(peerId, {
         peerId,
         name,
@@ -106,6 +107,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
         messages: [],
         hasMore: true,
       });
+      set({ conversations });
+    } else if (name && name !== peerId && name !== existing.peerId && existing.name === existing.peerId) {
+      // Update name if existing name is just the raw peerId (e.g. "g_123" → "My Group")
+      conversations.set(peerId, { ...existing, name });
       set({ conversations });
     }
   },
@@ -118,14 +123,35 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // Check for duplicate (by msgId)
     if (msg.msgId !== '0' && conv.messages.some((m) => m.msgId === msg.msgId)) return;
 
+    // Extract display text from JSON content for the conversation list preview
+    let previewText: string;
+    if (msg.recalled) {
+      previewText = '[消息已撤回]';
+    } else if (msg.msgType === MsgType.Text) {
+      const parsed = tryParseJSON<{ text?: string; type?: string; username?: string; name?: string; uid?: string }>(msg.content);
+      if (parsed?.text) {
+        previewText = parsed.text;
+      } else if (parsed?.type === 'friend_request') {
+        previewText = `${parsed.username || '用户'} 请求添加好友`;
+      } else if (parsed?.type === 'friend_accepted') {
+        previewText = '已同意好友请求';
+      } else if (parsed?.type === 'group_created') {
+        previewText = `群组 "${parsed.name || ''}" 已创建`;
+      } else if (parsed?.type === 'member_joined') {
+        previewText = `${parsed.uid || '用户'} 加入了群聊`;
+      } else if (parsed?.type === 'member_left') {
+        previewText = `${parsed.uid || '用户'} 退出了群聊`;
+      } else {
+        previewText = msg.content;
+      }
+    } else {
+      previewText = `[${msg.msgType === MsgType.Image ? '图片' : msg.msgType === MsgType.Voice ? '语音' : msg.msgType === MsgType.Video ? '视频' : '文件'}]`;
+    }
+
     const updated = {
       ...conv,
       messages: [...conv.messages, msg],
-      lastMessage: msg.recalled
-        ? '[消息已撤回]'
-        : msg.msgType === MsgType.Text
-          ? msg.content
-          : `[${msg.msgType === MsgType.Image ? '图片' : msg.msgType === MsgType.Voice ? '语音' : msg.msgType === MsgType.Video ? '视频' : '文件'}]`,
+      lastMessage: previewText,
       lastTime: Number(msg.timestamp) || Date.now(),
       // Only increment unread if NOT the active conversation and NOT from self
       unread:

@@ -23,6 +23,7 @@ export const Cmd = {
   GroupInfo: 15,
   GroupList: 16,
   File: 17,
+  GroupInviteMember: 18,
   Recall: 19,
   FriendRequest: 20,
   FriendResponse: 21,
@@ -104,14 +105,14 @@ export interface LoginResponse {
   token: string;
 }
 
-/** Group info */
+/** Group info — keys match backend JSON field names. */
 export interface GroupInfo {
   id: string;
   name: string;
-  ownerUid: string;
+  owner_uid: string;
   members: string[];
-  memberCount?: number;
-  createdAt: number;
+  member_count?: number;
+  created_at: number;
 }
 
 /** Group list item from /group/list */

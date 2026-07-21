@@ -5,26 +5,11 @@ import ConversationItem from './ConversationItem';
 export default function ConversationList() {
   // Subscribe to conversations Map directly so component re-renders on changes
   const conversationsMap = useChatStore((s) => s.conversations);
-  const deleteConversation = useChatStore((s) => s.deleteConversation);
-  const markUnread = useChatStore((s) => s.markUnread);
   const conversations = Array.from(conversationsMap.values()).sort(
     (a, b) => b.lastTime - a.lastTime,
   );
   const navigate = useNavigate();
   const { peerId } = useParams<{ peerId?: string }>();
-
-  const handleDelete = (id: string) => {
-    if (confirm('确定要删除该会话吗？消息记录将被清除。')) {
-      deleteConversation(id);
-      if (peerId === id) {
-        navigate('/chat', { replace: true });
-      }
-    }
-  };
-
-  const handleMarkUnread = (id: string) => {
-    markUnread(id);
-  };
 
   if (conversations.length === 0) {
     return (
@@ -47,8 +32,6 @@ export default function ConversationList() {
           conversation={conv}
           isActive={peerId === conv.peerId}
           onClick={() => navigate(`/chat/${conv.peerId}`)}
-          onDelete={handleDelete}
-          onMarkUnread={handleMarkUnread}
         />
       ))}
     </div>

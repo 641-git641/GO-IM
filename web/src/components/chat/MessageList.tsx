@@ -1,9 +1,9 @@
 import { useRef, useEffect } from 'react';
 import MessageBubble from './MessageBubble';
-import SystemNotice from './SystemNotice';
+import SystemNotice, { renderSystemNotice } from './SystemNotice';
 import type { ChatMessage } from '@/types';
 import { ChatType } from '@/types';
-import { isGroupNotification } from '@/lib/utils';
+import { isGroupNotification, isSystemMessage } from '@/lib/utils';
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -52,7 +52,22 @@ export default function MessageList({ messages, myUid, onRecall, onReply, onForw
       )}
 
       {messages.map((msg, i) => {
-        // Check if this is a group system notification
+        // Check if this is a system message (group notification, friend request, etc.)
+        const sysType = isSystemMessage(msg.content);
+        if (sysType) {
+          const noticeText = renderSystemNotice(msg.content);
+          if (noticeText) {
+            return (
+              <div key={msg.msgId || msg.seq || i} className="flex justify-center py-1">
+                <span className="px-3 py-1 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded-full">
+                  {noticeText}
+                </span>
+              </div>
+            );
+          }
+        }
+
+        // Backward compat: also check old notification format
         if (msg.chatType === ChatType.Group) {
           const notification = isGroupNotification(msg.content);
           if (notification) {

@@ -12,7 +12,7 @@ export function useFileUpload() {
   const upload = useCallback(
     async (file: File): Promise<UploadResponse | null> => {
       if (!uid || !token) {
-        setError('Not authenticated');
+        setError('未登录认证');
         return null;
       }
 
@@ -27,7 +27,7 @@ export function useFileUpload() {
         setProgress(100);
         return result;
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Upload failed';
+        const message = err instanceof Error ? err.message : '上传失败';
         setError(message);
         return null;
       } finally {

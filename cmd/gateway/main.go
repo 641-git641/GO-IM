@@ -271,6 +271,7 @@ func NewApp(cfg *configs.Config) (*App, error) {
 		cfg.Gateway.Conn,
 		cfg.Gateway.CheckOrigin,
 		snow, objectStore, cfg.Gateway.ObjectStorage.MaxUpload,
+		cfg.AdminUIDs,
 	)
 
 	// Register dependency health checks for the /health endpoint.
@@ -384,6 +385,7 @@ func (app *App) Run(ctx context.Context) error {
 	// Group chat management endpoints.
 	mux.HandleFunc("/group/create", app.Server.HandleGroupCreate)
 	mux.HandleFunc("/group/join", app.Server.HandleGroupJoin)
+	mux.HandleFunc("/group/invite", app.Server.HandleGroupInvite)
 	mux.HandleFunc("/group/leave", app.Server.HandleGroupLeave)
 	mux.HandleFunc("/group/kick", app.Server.HandleGroupKick)
 	mux.HandleFunc("/group/rename", app.Server.HandleGroupRename)

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { saveAuth, clearAuth, getStoredUid, getStoredUsername, getToken } from '@/lib/auth';
+import { saveAuth, clearAuth, getStoredUid, getStoredUsername, getToken, isTokenExpired } from '@/lib/auth';
 
 /** Decode the role field from a JWT payload. */
 function getRoleFromToken(token: string): boolean {
@@ -44,7 +44,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     const uid = getStoredUid();
     const username = getStoredUsername();
     const token = getToken();
-    if (uid && token) {
+    if (uid && token && !isTokenExpired()) {
       set({
         uid,
         username: username || uid,

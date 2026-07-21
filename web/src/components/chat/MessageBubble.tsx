@@ -89,9 +89,22 @@ export default function MessageBubble({ message, isMine, showAvatar, onRecall, o
   };
 
   // Parse reply metadata from content
-  const parsedContent = tryParseJSON<{ text?: string; reply_to?: ReplyTo; edited?: boolean }>(content);
+  const parsedContent = tryParseJSON<{ text?: string; reply_to?: ReplyTo; edited?: boolean; type?: string; username?: string; from_uid?: string; uid?: string; name?: string }>(content);
   const replyTo: ReplyTo | null = parsedContent?.reply_to || null;
-  const displayText: string = parsedContent?.text || content;
+
+  // Compute display text: handle JSON system messages gracefully
+  let displayText: string;
+  if (parsedContent?.text) {
+    displayText = parsedContent.text;
+  } else if (parsedContent?.type === 'friend_request') {
+    displayText = `${parsedContent.username || parsedContent.from_uid || '用户'} 请求添加好友`;
+  } else if (parsedContent?.type === 'friend_accepted') {
+    displayText = `${parsedContent.uid || '用户'} 已同意好友请求`;
+  } else if (parsedContent?.type === 'group_created') {
+    displayText = `群组 "${parsedContent.name || '未命名'}" 已创建`;
+  } else {
+    displayText = content;
+  }
 
   // Check if current user is mentioned in the message
   const isMentioned =
