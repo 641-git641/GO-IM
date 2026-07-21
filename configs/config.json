@@ -1,0 +1,99 @@
+{
+    "gateway": {
+        "http_addr": ":8080",
+        "tcp_addr": ":8081",
+        "transport": "websocket",
+        "heartbeat": "30s",
+        "heartbeat_fail": 3,
+        "check_origin": ["http://localhost:5173"],
+
+        "conn": {
+            "pong_wait": "60s",
+            "ping_period": "54s",
+            "max_msg_size": 65536,
+            "send_buf_size": 256,
+            "offline_max_size": 1000
+        },
+
+        "rate_limit": {
+            "enabled": true,
+            "rate": 10,
+            "burst": 20,
+            "cleanup_interval": "5m"
+        },
+
+        "redis": {
+            "addr": "localhost:6379",
+            "password": "",
+            "db": 0
+        },
+
+        "gnet": {
+            "num_event_loops": 0,
+            "worker_pool_size": 0
+        },
+
+        "mysql": {
+            "enabled": true,
+            "dsn": "im:im-dev@tcp(127.0.0.1:3307)/im?parseTime=true&charset=utf8mb4"
+        },
+
+        "auth": {
+            "dev_mode": true
+        },
+
+        "kafka": {
+            "enabled": true,
+            "brokers": ["localhost:9092"],
+            "topic": "im.message.persist"
+        },
+
+        "logic": {
+            "addr": "localhost:50051",
+            "listen_addr": ":50051"
+        },
+
+        "grpc": {
+            "addr": "",
+            "node_id": "",
+            "peer_addrs": {}
+        },
+
+        "object_storage": {
+            "enabled": true,
+            "endpoint": "localhost:9000",
+            "access_key": "minioadmin",
+            "secret_key": "minioadmin",
+            "bucket": "im-files",
+            "use_ssl": false,
+            "max_upload": 10485760
+        }
+    },
+
+    "admin_uids": [],
+
+    "logic": {
+        "addr": "localhost:50051",
+        "listen_addr": ":50051",
+        "mysql": { "enabled": true, "dsn": "im:im-dev@tcp(127.0.0.1:3307)/im?parseTime=true&charset=utf8mb4" },
+        "kafka": { "enabled": true, "brokers": ["localhost:9092"], "topic": "im.message.persist" }
+    },
+
+    "stability": {
+        "max_connections": 0,
+        "http_read_timeout": "10s",
+        "http_write_timeout": "10s",
+        "http_idle_timeout": "120s",
+        "shutdown_timeout": "30s",
+        "pprof_enabled": false
+    },
+
+    "jwt": {
+        "secret": "change-me-in-production",
+        "expiration": "168h"
+    },
+
+    "snowflake": {
+        "worker_id": 1
+    }
+}

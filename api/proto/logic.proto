@@ -1,0 +1,173 @@
+syntax = "proto3";
+
+package im;
+option go_package = "github.com/im/api/proto;proto";
+
+import "message.proto";
+
+// HistoryRequest is sent by a client to query conversation history.
+message HistoryRequest {
+    string uid     = 1; // requester UID
+    string peer    = 2; // conversation peer UID
+    int64  before  = 3; // fetch messages before this timestamp (ms), 0 = now
+    int32  limit   = 4; // max number of messages, 0 = default (30)
+}
+
+// HistoryResponse returns conversation history messages and a count.
+message HistoryResponse {
+    repeated Message messages = 1;
+    int32  delivered          = 2; // number of messages actually returned
+}
+
+// UserRequest is sent to query a user by UID.
+message UserRequest {
+    string uid = 1;
+}
+
+// UserResponse returns user information.
+message UserResponse {
+    string uid      = 1;
+    string username = 2;
+    bool   found    = 3; // false if user does not exist
+}
+
+// SearchRequest is sent to perform a fulltext search on messages.
+message SearchRequest {
+    string uid      = 1;  // searching user (access control — must be participant)
+    string query    = 2;  // search terms
+    string peer     = 3;  // optional: scope to one conversation
+    int32  chat_type = 4; // optional filter: 0=all, 1=single, 2=group
+    int32  msg_type  = 5; // optional filter: 0=all
+    int64  before   = 6;  // optional: max timestamp (ms)
+    int64  after    = 7;  // optional: min timestamp (ms)
+    int32  limit    = 8;  // max results, default 20, max 50
+    int64  cursor   = 9;  // keyset pagination: msg_id of last result
+}
+
+// SearchResponse returns fulltext search results.
+message SearchResponse {
+    repeated Message messages   = 1;
+    int32  count                = 2; // number of results in this page
+    int64  next_cursor          = 3; // 0 = no more pages
+}
+
+// GroupInfo represents a chat group's metadata and member list.
+message GroupInfo {
+    string id         = 1; // e.g. "g_123456"
+    string name       = 2; // human-readable group name
+    string owner_uid  = 3; // creator/owner
+    repeated string members = 4; // member UIDs
+    int64  created_at = 5; // unix millis
+}
+
+// CreateGroupRequest is sent to create a new group.
+message CreateGroupRequest {
+    string name       = 1;
+    string owner_uid  = 2;
+}
+
+// CreateGroupResponse returns the newly created group.
+message CreateGroupResponse {
+    GroupInfo group = 1;
+    string error    = 2; // empty on success
+}
+
+// JoinGroupRequest is sent to add a user to a group.
+message JoinGroupRequest {
+    string group_id = 1;
+    string uid      = 2;
+}
+
+// JoinGroupResponse confirms membership.
+message JoinGroupResponse {
+    bool   ok    = 1;
+    string error = 2; // reason on failure
+}
+
+// LeaveGroupRequest is sent to remove a user from a group.
+message LeaveGroupRequest {
+    string group_id = 1;
+    string uid      = 2;
+}
+
+// LeaveGroupResponse confirms departure.
+message LeaveGroupResponse {
+    bool   ok      = 1;
+    bool   deleted = 2; // true if group was deleted (last member left)
+    string error   = 3; // reason on failure
+}
+
+// GetGroupRequest is sent to query group details.
+message GetGroupRequest {
+    string group_id = 1;
+}
+
+// GetGroupResponse returns group info if found.
+message GetGroupResponse {
+    GroupInfo group = 1;
+    bool      found = 2;
+}
+
+// ListGroupsRequest is sent to list groups for a user.
+message ListGroupsRequest {
+    string uid = 1;
+}
+
+// ListGroupsResponse returns the groups the user belongs to.
+message ListGroupsResponse {
+    repeated GroupInfo groups = 1;
+}
+
+// UnreadCount represents the number of unread messages for a conversation.
+message UnreadCount {
+    string peer  = 1; // conversation peer UID or group ID
+    int64  count = 2; // number of unread messages
+}
+
+// IncrementUnreadRequest is sent to increment the unread count for a conversation.
+message IncrementUnreadRequest {
+    string uid  = 1; // user whose unread count to increment (receiver)
+    string peer = 2; // sender UID or group ID
+}
+
+// IncrementUnreadResponse returns the new count.
+message IncrementUnreadResponse {
+    int64 new_count = 1;
+}
+
+// MarkReadRequest is sent to mark a conversation as read.
+message MarkReadRequest {
+    string reader = 1; // user who read the messages
+    string peer   = 2; // conversation peer or group
+}
+
+// MarkReadResponse confirms the operation.
+message MarkReadResponse {
+    bool ok = 1;
+}
+
+// GetUnreadCountsRequest is sent to fetch all unread counts for a user.
+message GetUnreadCountsRequest {
+    string uid = 1;
+}
+
+// GetUnreadCountsResponse returns per-conversation unread counts.
+message GetUnreadCountsResponse {
+    repeated UnreadCount counts = 1;
+}
+
+// Logic provides synchronous RPCs that the Gateway calls when it needs
+// to query persistent state (history, users, search, groups, unread) from the Logic/Storage layer.
+service Logic {
+    rpc QueryHistory(HistoryRequest) returns (HistoryResponse);
+    rpc GetUser(UserRequest) returns (UserResponse);
+    rpc SearchMessages(SearchRequest) returns (SearchResponse);
+    rpc CreateGroup(CreateGroupRequest) returns (CreateGroupResponse);
+    rpc JoinGroup(JoinGroupRequest) returns (JoinGroupResponse);
+    rpc LeaveGroup(LeaveGroupRequest) returns (LeaveGroupResponse);
+    rpc GetGroup(GetGroupRequest) returns (GetGroupResponse);
+    rpc ListGroups(ListGroupsRequest) returns (ListGroupsResponse);
+    rpc IncrementUnread(IncrementUnreadRequest) returns (IncrementUnreadResponse);
+    rpc MarkRead(MarkReadRequest) returns (MarkReadResponse);
+    rpc GetUnreadCounts(GetUnreadCountsRequest) returns (GetUnreadCountsResponse);
+}

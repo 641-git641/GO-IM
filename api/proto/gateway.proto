@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package im;
+option go_package = "github.com/im/api/proto;proto";
+
+import "message.proto";
+
+// ForwardRequest carries a message that needs to be delivered to a user
+// connected on a different Gateway node. The receiving Gateway unpacks the
+// message and delivers it locally.
+message ForwardRequest {
+    Message message = 1; // the message to forward
+    string  uid     = 2; // target UID (redundant with message.To for routing clarity)
+}
+
+// ForwardResponse indicates whether the forward was delivered locally.
+message ForwardResponse {
+    bool   delivered      = 1; // true if the target was online and received the message
+    string error          = 2; // human-readable error description when not delivered
+}
+
+// Gateway provides inter-Gateway RPCs for cross-node message forwarding.
+// Implemented in Phase 4 (multi-node horizontal scaling) with GrpcForwarder + HashRing.
+service Gateway {
+    rpc ForwardMessage(ForwardRequest) returns (ForwardResponse);
+}

@@ -1,0 +1,36 @@
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node (frontend)
+web/node_modules/
+web/dist/
+
+# Go build artifacts
+*.exe
+*.test
+*.out
+
+# Documentation (not needed in container)
+docs/
+*.md
+!CLAUDE.md
+
+# Docker
+Dockerfile*
+docker-compose.yml
+.dockerignore
+
+# Config Go source is needed at build time; JSON files are mounted at runtime.
+configs/*.json
+
+# Misc
+tmp/
+logs/
