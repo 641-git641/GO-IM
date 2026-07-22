@@ -255,7 +255,11 @@ func (s *Server) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := s.jwtMgr.Generate(uid, username, "user")
+	role := "user"
+	if s.adminUIDs[uid] {
+		role = "admin"
+	}
+	token, err := s.jwtMgr.Generate(uid, username, role)
 	if err != nil {
 		http.Error(w, "generate token: "+err.Error(), http.StatusInternalServerError)
 		return

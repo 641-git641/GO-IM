@@ -4,7 +4,9 @@ import { saveAuth, clearAuth, getStoredUid, getStoredUsername, getToken, isToken
 /** Decode the role field from a JWT payload. */
 function getRoleFromToken(token: string): boolean {
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
+    // JWT uses base64url (not standard base64): replace - → +, _ → /
+    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(atob(base64));
     return payload.role === 'admin';
   } catch {
     return false;

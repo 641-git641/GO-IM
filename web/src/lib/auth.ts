@@ -37,7 +37,9 @@ export function isTokenExpired(): boolean {
 
   try {
     // JWT payload is the second segment (base64url)
-    const payload = JSON.parse(atob(token.split('.')[1]));
+    // JWT uses base64url (not standard base64): replace - → +, _ → /
+    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(atob(base64));
     const exp = payload.exp * 1000; // JWT exp is in seconds
     return Date.now() >= exp;
   } catch {
