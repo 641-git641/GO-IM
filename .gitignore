@@ -8,6 +8,7 @@
 /logic
 /gateway.exe
 /logic.exe
+/gateway-linux
 
 # Test binary
 *.test
@@ -35,6 +36,10 @@ docker-compose.override.yml
 # Build output
 web/dist/
 web/node_modules/
+
+# Deployment generated files
+deploy/nginx.prod.generated.conf
+deploy/certbot/
 
 # Logs
 *.log

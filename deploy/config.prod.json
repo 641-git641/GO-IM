@@ -1,0 +1,125 @@
+{
+    "_comment": "IM 生产环境配置模板。将此文件复制为 configs/config.docker.json 并修改敏感信息。",
+
+    "gateway": {
+        "http_addr": ":8080",
+        "tcp_addr": ":8081",
+        "transport": "both",
+        "heartbeat": "30s",
+        "heartbeat_fail": 3,
+        "check_origin": ["https://YOUR_DOMAIN", "https://www.YOUR_DOMAIN"],
+
+        "conn": {
+            "pong_wait": "60s",
+            "ping_period": "54s",
+            "max_msg_size": 65536,
+            "send_buf_size": 256,
+            "offline_max_size": 1000
+        },
+
+        "rate_limit": {
+            "_comment": "生产环境建议保守限制，防止单用户刷屏",
+            "enabled": true,
+            "rate": 10,
+            "burst": 20,
+            "cleanup_interval": "5m"
+        },
+
+        "redis": {
+            "_comment": "Docker Compose 内部 DNS",
+            "addr": "redis:6379",
+            "password": "",
+            "db": 0
+        },
+
+        "gnet": {
+            "num_event_loops": 0,
+            "worker_pool_size": 0
+        },
+
+        "mysql": {
+            "_comment": "生产环境必须启用 MySQL 持久化",
+            "enabled": true,
+            "dsn": "im:CHANGE_ME_PASSWORD@tcp(mysql:3306)/im?parseTime=true&charset=utf8mb4"
+        },
+
+        "auth": {
+            "_comment": "生产环境必须关闭 dev_mode",
+            "dev_mode": false
+        },
+
+        "kafka": {
+            "_comment": "Kafka 用于消息异步持久化，低资源服务器可关闭（enabled: false）",
+            "enabled": true,
+            "brokers": ["kafka:9092"],
+            "topic": "im.message.persist"
+        },
+
+        "logic": {
+            "addr": "logic:50051",
+            "listen_addr": ":50051"
+        },
+
+        "grpc": {
+            "_comment": "单节点部署留空。多节点集群需配置 node_id + peer_addrs",
+            "addr": "",
+            "node_id": "",
+            "peer_addrs": {},
+            "forward_dial_timeout": "3s",
+            "forward_rpc_timeout": "2s",
+            "discovery": {
+                "mode": "static",
+                "redis_key": "im:gateway:node:",
+                "ttl": "15s",
+                "health_interval": "5s"
+            }
+        },
+
+        "object_storage": {
+            "enabled": true,
+            "endpoint": "minio:9000",
+            "access_key": "minioadmin",
+            "secret_key": "CHANGE_ME_MINIO_SECRET",
+            "bucket": "im-files",
+            "use_ssl": false,
+            "max_upload": 10485760
+        },
+
+        "recall_window_ms": 120000,
+        "history_default_limit": 30,
+        "search_default_limit": 20,
+        "dedup_ttl": "5m",
+        "persist_concurrency": 64
+    },
+
+    "admin_uids": ["YOUR_ADMIN_UID"],
+
+    "logic": {
+        "addr": "logic:50051",
+        "listen_addr": ":50051",
+        "mysql": { "enabled": true, "dsn": "im:CHANGE_ME_PASSWORD@tcp(mysql:3306)/im?parseTime=true&charset=utf8mb4" },
+        "kafka": { "enabled": true, "brokers": ["kafka:9092"], "topic": "im.message.persist" },
+        "worker_id": 2
+    },
+
+    "stability": {
+        "_comment": "生产环境建议限制最大连接数",
+        "max_connections": 1000,
+        "http_read_timeout": "10s",
+        "http_write_timeout": "10s",
+        "http_idle_timeout": "120s",
+        "shutdown_timeout": "30s",
+        "pprof_enabled": false,
+        "pprof_addr": "localhost:6060"
+    },
+
+    "jwt": {
+        "_comment": "！！生产环境必须更换 JWT 密钥！！使用 openssl rand -base64 64 生成",
+        "secret": "CHANGE_ME_JWT_SECRET_USE_RANDOM_64_CHARS",
+        "expiration": "168h"
+    },
+
+    "snowflake": {
+        "worker_id": 1
+    }
+}
