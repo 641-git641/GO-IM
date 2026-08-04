@@ -2,11 +2,10 @@ package mq
 
 import (
 	"context"
-	"net"
 	"testing"
-	"time"
 
 	"github.com/im/api/proto"
+	"github.com/segmentio/kafka-go"
 )
 
 // TestProducerPublishNil 是一个安全测试 —— 发布 nil 消息
@@ -38,12 +37,21 @@ func TestProducerPublishNil(t *testing.T) {
 // TestProducerIntegration 向真实的 Kafka broker 发布一条消息
 // 并验证不会出错。如果 Kafka 未运行则跳过。
 func TestProducerIntegration(t *testing.T) {
-	// 快速连通性检查 —— 默认端口没有 Kafka 则跳过。
-	conn, err := net.DialTimeout("tcp", "localhost:9092", 500*time.Millisecond)
+	// 协议级连通性检查 —— 默认端口没有 Kafka 则跳过。
+	conn, err := kafka.DialContext(context.Background(), "tcp", "localhost:9092")
 	if err != nil {
 		t.Skip("Kafka not running on localhost:9092 — skipping integration test")
 	}
-	conn.Close()
+	defer conn.Close()
+
+	// 显式创建 topic(kafka-go 默认不请求自动创建);重复创建幂等,无副作用。
+	if err := conn.CreateTopics(kafka.TopicConfig{
+		Topic:             "im.test.producer",
+		NumPartitions:     1,
+		ReplicationFactor: 1,
+	}); err != nil {
+		t.Fatalf("CreateTopics: %v", err)
+	}
 
 	producer, err := NewProducer(ProducerConfig{
 		Brokers: []string{"localhost:9092"},

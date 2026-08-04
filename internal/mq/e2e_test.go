@@ -3,11 +3,11 @@ package mq
 import (
 	"context"
 	"fmt"
-	"net"
 	"testing"
 	"time"
 
 	"github.com/im/api/proto"
+	"github.com/segmentio/kafka-go"
 )
 
 // TestProducerConsumerEndToEnd 验证完整的 Kafka 持久化链路:
@@ -17,16 +17,26 @@ import (
 // 需要真实 Kafka(CI 的 kafka job 会起 apache/kafka 服务容器),
 // 本机未运行 Kafka 时跳过(与 TestProducerIntegration 的处理一致)。
 func TestProducerConsumerEndToEnd(t *testing.T) {
-	// 快速连通性检查 —— 默认端口没有 Kafka 则跳过。
-	conn, err := net.DialTimeout("tcp", "localhost:9092", 500*time.Millisecond)
+	// 建立到 broker 的协议级连接(比纯 TCP 探测更可靠),本机无 Kafka 时跳过。
+	conn, err := kafka.DialContext(context.Background(), "tcp", "localhost:9092")
 	if err != nil {
-		t.Skip("Kafka not running on localhost:9092 — skipping e2e test")
+		t.Skipf("Kafka not running on localhost:9092 — skipping e2e test: %v", err)
 	}
-	conn.Close()
+	defer conn.Close()
 
 	// 每次运行使用唯一 topic 和消费组,避免上次提交的 offset 干扰本次消费。
 	topic := fmt.Sprintf("im.e2e.%d", time.Now().UnixNano())
 	group := fmt.Sprintf("im-e2e-%d", time.Now().UnixNano())
+
+	// 显式创建 topic:kafka-go 生产者的 AllowAutoTopicCreation 默认为 false,
+	// 客户端不会请求 broker 自动建 topic,因此必须先手动创建。
+	if err := conn.CreateTopics(kafka.TopicConfig{
+		Topic:             topic,
+		NumPartitions:     1,
+		ReplicationFactor: 1,
+	}); err != nil {
+		t.Fatalf("CreateTopics(%s): %v", topic, err)
+	}
 
 	producer, err := NewProducer(ProducerConfig{Brokers: []string{"localhost:9092"}, Topic: topic})
 	if err != nil {
