@@ -26,9 +26,9 @@ type Server struct {
 	clients    ClientRegistry
 	router     *Router
 	jwtMgr     *jwt.Manager
-	userStore  repo.UserStore   // MySQL 禁用时为 nil
+	userStore  repo.UserStore    // MySQL 禁用时为 nil
 	msgStore   repo.MessageStore // MySQL 禁用时为 nil(管理员 API)
-	groupStore GroupStore       // 群聊禁用时为 nil
+	groupStore GroupStore        // 群聊禁用时为 nil
 	authCfg    configs.AuthConfig
 	adminUIDs  map[string]bool // 具有管理员权限的 UID(来自配置)
 	heartbeat  time.Duration
@@ -836,11 +836,11 @@ func (s *Server) HandleGroupList(w http.ResponseWriter, r *http.Request) {
 
 	// 只暴露安全字段(不暴露所有群的内部成员映射)。
 	type groupInfo struct {
-		ID          string   `json:"id"`
-		Name        string   `json:"name"`
-		OwnerUID    string   `json:"owner_uid"`
-		MemberCount int      `json:"member_count"`
-		CreatedAt   int64    `json:"created_at"`
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		OwnerUID    string `json:"owner_uid"`
+		MemberCount int    `json:"member_count"`
+		CreatedAt   int64  `json:"created_at"`
 	}
 	result := make([]groupInfo, 0, len(groups))
 	for _, g := range groups {
@@ -1046,8 +1046,8 @@ func (s *Server) HandleFriendList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data, _ := json.Marshal(map[string]interface{}{
-		"uid":             claims.UID,
-		"friends":         friends,
+		"uid":              claims.UID,
+		"friends":          friends,
 		"pending_requests": requests,
 	})
 	w.Header().Set("Content-Type", "application/json")
@@ -1365,8 +1365,8 @@ func (s *Server) HandleHealth(w http.ResponseWriter, r *http.Request) {
 		status = "degraded"
 	}
 	data, _ := json.Marshal(map[string]interface{}{
-		"status":      status,
-		"connections": s.clients.Count(r.Context()),
+		"status":       status,
+		"connections":  s.clients.Count(r.Context()),
 		"dependencies": deps,
 		"memory": map[string]interface{}{
 			"alloc_mb":   int(m.Alloc / 1024 / 1024),

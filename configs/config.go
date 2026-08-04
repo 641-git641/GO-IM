@@ -32,7 +32,7 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 
 // StabilityConfig 保存运行稳定性相关设置。
 type StabilityConfig struct {
-	MaxConnections   int      `json:"max_connections"`   // 0 = 无限制
+	MaxConnections   int      `json:"max_connections"`    // 0 = 无限制
 	HTTPReadTimeout  Duration `json:"http_read_timeout"`  // 例如 "10s"
 	HTTPWriteTimeout Duration `json:"http_write_timeout"` // 例如 "10s"
 	HTTPIdleTimeout  Duration `json:"http_idle_timeout"`  // 例如 "120s"
@@ -53,29 +53,29 @@ type Config struct {
 
 // GatewayConfig 保存网关服务器设置。
 type GatewayConfig struct {
-	HTTPAddr      string            `json:"http_addr"`       // 例如 ":8080"
-	TCPAddr       string            `json:"tcp_addr"`        // 例如 ":8081" —— gnet TCP 监听地址
-	Transport     string            `json:"transport"`       // "websocket"、"gnet" 或 "both"
-	Heartbeat     Duration          `json:"heartbeat"`       // 心跳间隔
-	HeartbeatFail int               `json:"heartbeat_fail"`  // 最大连续心跳失败次数
-	CheckOrigin   []string          `json:"check_origin"`    // 允许的 WebSocket 来源（空 = 允许全部）
-	Conn          GatewayConnConfig `json:"conn"`            // 每连接参数
-	RateLimit     RateLimitConfig   `json:"rate_limit"`      // 限流
-	Redis         RedisConfig       `json:"redis"`           // Redis（Addr 为空 = 禁用）
-	GNet          GNetConfig        `json:"gnet"`            // gnet TCP 设置
-	MySQL         MySQLConfig       `json:"mysql"`           // MySQL（Enabled=false = 内存模式）
-	Auth          AuthConfig        `json:"auth"`            // 认证设置
-	Kafka         KafkaConfig       `json:"kafka"`           // Kafka（Enabled=false = 直接写 MySQL）
-	LogicGateway  LogicConfig       `json:"logic"`           // Gateway→Logic 的 gRPC 客户端（Addr）；与顶层 Config.Logic 不同
-	Grpc          GrpcConfig           `json:"grpc"`            // 网关自身的 gRPC 服务器（用于跨网关，未来扩展）
-	ObjectStorage ObjectStorageConfig  `json:"object_storage"`   // 用于文件/图片消息的 MinIO/S3
+	HTTPAddr      string              `json:"http_addr"`      // 例如 ":8080"
+	TCPAddr       string              `json:"tcp_addr"`       // 例如 ":8081" —— gnet TCP 监听地址
+	Transport     string              `json:"transport"`      // "websocket"、"gnet" 或 "both"
+	Heartbeat     Duration            `json:"heartbeat"`      // 心跳间隔
+	HeartbeatFail int                 `json:"heartbeat_fail"` // 最大连续心跳失败次数
+	CheckOrigin   []string            `json:"check_origin"`   // 允许的 WebSocket 来源（空 = 允许全部）
+	Conn          GatewayConnConfig   `json:"conn"`           // 每连接参数
+	RateLimit     RateLimitConfig     `json:"rate_limit"`     // 限流
+	Redis         RedisConfig         `json:"redis"`          // Redis（Addr 为空 = 禁用）
+	GNet          GNetConfig          `json:"gnet"`           // gnet TCP 设置
+	MySQL         MySQLConfig         `json:"mysql"`          // MySQL（Enabled=false = 内存模式）
+	Auth          AuthConfig          `json:"auth"`           // 认证设置
+	Kafka         KafkaConfig         `json:"kafka"`          // Kafka（Enabled=false = 直接写 MySQL）
+	LogicGateway  LogicConfig         `json:"logic"`          // Gateway→Logic 的 gRPC 客户端（Addr）；与顶层 Config.Logic 不同
+	Grpc          GrpcConfig          `json:"grpc"`           // 网关自身的 gRPC 服务器（用于跨网关，未来扩展）
+	ObjectStorage ObjectStorageConfig `json:"object_storage"` // 用于文件/图片消息的 MinIO/S3
 
 	// 运行参数（之前为硬编码常量）。
-	RecallWindowMs     int64    `json:"recall_window_ms"`      // 消息撤回时间窗口（毫秒），默认 120000
-	HistoryDefaultLimit int     `json:"history_default_limit"` // 默认历史记录每页条数，默认 30
-	SearchDefaultLimit  int     `json:"search_default_limit"`  // 默认搜索结果条数，默认 20
-	DedupTTL            Duration `json:"dedup_ttl"`            // 去重缓存条目 TTL，默认 "5m"
-	PersistConcurrency  int      `json:"persist_concurrency"`  // 最大并发异步持久化 goroutine 数，默认 64
+	RecallWindowMs      int64    `json:"recall_window_ms"`      // 消息撤回时间窗口（毫秒），默认 120000
+	HistoryDefaultLimit int      `json:"history_default_limit"` // 默认历史记录每页条数，默认 30
+	SearchDefaultLimit  int      `json:"search_default_limit"`  // 默认搜索结果条数，默认 20
+	DedupTTL            Duration `json:"dedup_ttl"`             // 去重缓存条目 TTL，默认 "5m"
+	PersistConcurrency  int      `json:"persist_concurrency"`   // 最大并发异步持久化 goroutine 数，默认 64
 }
 
 // GNetConfig 保存 gnet TCP 服务器设置。
@@ -160,9 +160,9 @@ type GatewayConnConfig struct {
 
 // RateLimitConfig 保存每用户限流设置。
 type RateLimitConfig struct {
-	Enabled        bool     `json:"enabled"`         // false = 禁用限流
-	Rate           int      `json:"rate"`            // 每秒消息数（令牌补充速率）
-	Burst          int      `json:"burst"`           // 最大突发量（桶容量）
+	Enabled         bool     `json:"enabled"`          // false = 禁用限流
+	Rate            int      `json:"rate"`             // 每秒消息数（令牌补充速率）
+	Burst           int      `json:"burst"`            // 最大突发量（桶容量）
 	CleanupInterval Duration `json:"cleanup_interval"` // 过期桶清理间隔，默认 "5m"
 }
 
@@ -202,9 +202,9 @@ func Default() *Config {
 				OfflineMaxSize: 1000,
 			},
 			RateLimit: RateLimitConfig{
-				Enabled:        true,
-				Rate:           10,
-				Burst:          20,
+				Enabled:         true,
+				Rate:            10,
+				Burst:           20,
 				CleanupInterval: Duration(5 * time.Minute),
 			},
 			GNet: GNetConfig{
@@ -212,14 +212,14 @@ func Default() *Config {
 				WorkerPoolSize: 0, // 自动（runtime.NumCPU() * 2）
 			},
 			MySQL: MySQLConfig{
-				Enabled: false,                                                      // 默认使用内存模式
+				Enabled: false, // 默认使用内存模式
 				DSN:     "im:im-dev@tcp(127.0.0.1:3307)/im?parseTime=true&charset=utf8mb4",
 			},
 			Auth: AuthConfig{
 				DevMode: true, // 开发环境跳过密码
 			},
 			Kafka: KafkaConfig{
-				Enabled: false,                // 默认直接写 MySQL / 同步写入
+				Enabled: false, // 默认直接写 MySQL / 同步写入
 				Brokers: []string{"localhost:9092"},
 				Topic:   "im.message.persist",
 			},
@@ -231,7 +231,7 @@ func Default() *Config {
 				WorkerID:   2,             // 群组 ID 的 snowflake worker（网关使用 1）
 			},
 			Grpc: GrpcConfig{
-				Addr:               "",   // 空 = 禁用（单节点模式）
+				Addr:               "", // 空 = 禁用（单节点模式）
 				NodeID:             "",
 				PeerAddrs:          nil,
 				ForwardDialTimeout: Duration(3 * time.Second),
@@ -244,7 +244,7 @@ func Default() *Config {
 				},
 			},
 			ObjectStorage: ObjectStorageConfig{
-				Enabled:   false,      // 默认使用内存模式（无需 Docker）
+				Enabled:   false, // 默认使用内存模式（无需 Docker）
 				Endpoint:  "localhost:9000",
 				AccessKey: "minioadmin",
 				SecretKey: "minioadmin",

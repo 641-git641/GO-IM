@@ -148,7 +148,7 @@ func TestRouteChatOffline(t *testing.T) {
 	}
 
 	// 消息应存储在离线存储中
-	offlineMsgs := h.DrainOffline(context.Background(),"bob")
+	offlineMsgs := h.DrainOffline(context.Background(), "bob")
 	if len(offlineMsgs) != 1 {
 		t.Fatalf("expected 1 offline message, got %d", len(offlineMsgs))
 	}
@@ -199,7 +199,7 @@ func TestRouteChatSendBufferFull(t *testing.T) {
 	}
 
 	// 消息应存储在离线存储中（发送失败 → 回退）
-	offlineMsgs := h.DrainOffline(context.Background(),"bob")
+	offlineMsgs := h.DrainOffline(context.Background(), "bob")
 	if len(offlineMsgs) != 1 {
 		t.Fatalf("expected 1 offline message (send buffer full fallback), got %d", len(offlineMsgs))
 	}
@@ -297,7 +297,7 @@ func TestRouteOfflineDrain(t *testing.T) {
 	sg, _ := snowflake.New(1)
 	r := NewRouter(h, h, sg, nil, DefaultRouterConfig())
 
-	h.StoreOffline(context.Background(),"alice", &proto.Message{
+	h.StoreOffline(context.Background(), "alice", &proto.Message{
 		Cmd: proto.CmdChat, MsgId: 100, Content: "stored msg",
 	})
 
@@ -311,7 +311,7 @@ func TestRouteOfflineDrain(t *testing.T) {
 	}
 
 	// 队列应被排空
-	remaining := h.DrainOffline(context.Background(),"alice")
+	remaining := h.DrainOffline(context.Background(), "alice")
 	if len(remaining) != 0 {
 		t.Errorf("expected empty queue after drain, got %d", len(remaining))
 	}
@@ -736,222 +736,222 @@ func TestRouteHistoryDefaultLimit(t *testing.T) {
 	}
 }
 
-	// ---------- 多网关哈希环路由 ----------
+// ---------- 多网关哈希环路由 ----------
 
-	// mockForwarder 记录所有转发的消息，供测试断言使用。
-	type mockForwarder struct {
-		mu        sync.Mutex
-		forwarded []forwardCall
-		// Forward() 的返回值。
-		delivered bool
-		err       error
+// mockForwarder 记录所有转发的消息，供测试断言使用。
+type mockForwarder struct {
+	mu        sync.Mutex
+	forwarded []forwardCall
+	// Forward() 的返回值。
+	delivered bool
+	err       error
+}
+
+type forwardCall struct {
+	UID string
+	Msg *proto.Message
+}
+
+func (m *mockForwarder) Forward(ctx context.Context, uid string, msg *proto.Message) (bool, error) {
+	m.mu.Lock()
+	m.forwarded = append(m.forwarded, forwardCall{UID: uid, Msg: msg})
+	m.mu.Unlock()
+	return m.delivered, m.err
+}
+
+// makeHashRing 创建包含给定节点的 HashRing 并返回。
+func makeHashRing(nodeIDs ...string) *HashRing {
+	hr := NewHashRing(150)
+	for _, id := range nodeIDs {
+		hr.Add(id)
+	}
+	return hr
+}
+
+func TestRouteChatWithHashRingLocalDelivery(t *testing.T) {
+	h := NewHub(100)
+	sg, _ := snowflake.New(1)
+	r := NewRouter(h, h, sg, nil, DefaultRouterConfig())
+
+	// 哈希环包含 gw-1；本节点是 gw-1 → bob 归我们所有。
+	hr := makeHashRing("gw-1", "gw-2")
+	r.SetHashRing(hr)
+	r.SetThisNodeID("gw-1")
+
+	// 目标已本地连接。
+	target := newTestClient(t, "bob", "Bob")
+	h.Register(context.Background(), target)
+
+	sender := newTestClient(t, "alice", "Alice")
+	r.Route(context.Background(), sender, &proto.Message{
+		Cmd:      proto.CmdChat,
+		From:     "alice",
+		To:       "bob",
+		ChatType: proto.ChatTypeSingle,
+		MsgType:  proto.MsgTypeText,
+		Content:  "hello via hash ring",
+		NeedAck:  true,
+		Seq:      1,
+	})
+
+	// 目标应在本地收到消息。
+	delivered := readMessageFromChan(t, target.send)
+	if delivered.Content != "hello via hash ring" {
+		t.Errorf("expected content 'hello via hash ring', got '%s'", delivered.Content)
 	}
 
-	type forwardCall struct {
-		UID string
-		Msg *proto.Message
+	// 发送者应收到 ACK。
+	ack := readMessageFromChan(t, sender.send)
+	if ack.Cmd != proto.CmdAck {
+		t.Errorf("expected ACK, got cmd=%d", ack.Cmd)
+	}
+	if ack.Seq != 1 {
+		t.Errorf("expected ACK Seq=1, got Seq=%d", ack.Seq)
+	}
+}
+
+func TestRouteChatWithHashRingPeerForward(t *testing.T) {
+	h := NewHub(100)
+	sg, _ := snowflake.New(1)
+	r := NewRouter(h, h, sg, nil, DefaultRouterConfig())
+
+	// 哈希环只有 "gw-2"（不是自身）→ 所有目标转发到 gw-2。
+	hr := makeHashRing("gw-2")
+	r.SetHashRing(hr)
+	r.SetThisNodeID("gw-1")
+
+	fw := &mockForwarder{delivered: true}
+	r.SetForwarder(fw)
+
+	// Bob 未在本地注册。
+	sender := newTestClient(t, "alice", "Alice")
+	r.Route(context.Background(), sender, &proto.Message{
+		Cmd:      proto.CmdChat,
+		From:     "alice",
+		To:       "bob",
+		ChatType: proto.ChatTypeSingle,
+		MsgType:  proto.MsgTypeText,
+		Content:  "forward me",
+		NeedAck:  true,
+		Seq:      2,
+	})
+
+	// 转发器应已被调用。
+	if len(fw.forwarded) != 1 {
+		t.Fatalf("expected 1 forwarded call, got %d", len(fw.forwarded))
+	}
+	if fw.forwarded[0].UID != "bob" {
+		t.Errorf("forwarded to wrong UID: %s", fw.forwarded[0].UID)
+	}
+	if fw.forwarded[0].Msg.Content != "forward me" {
+		t.Errorf("forwarded wrong content: %s", fw.forwarded[0].Msg.Content)
 	}
 
-	func (m *mockForwarder) Forward(ctx context.Context, uid string, msg *proto.Message) (bool, error) {
-		m.mu.Lock()
-		m.forwarded = append(m.forwarded, forwardCall{UID: uid, Msg: msg})
-		m.mu.Unlock()
-		return m.delivered, m.err
+	// 发送者应收到 ACK。
+	ack := readMessageFromChan(t, sender.send)
+	if ack.Cmd != proto.CmdAck {
+		t.Errorf("expected ACK, got cmd=%d", ack.Cmd)
 	}
 
-	// makeHashRing 创建包含给定节点的 HashRing 并返回。
-	func makeHashRing(nodeIDs ...string) *HashRing {
-		hr := NewHashRing(150)
-		for _, id := range nodeIDs {
-			hr.Add(id)
-		}
-		return hr
+	// 本地离线存储中无消息（对端已处理）。
+	offlineMsgs := h.DrainOffline(context.Background(), "bob")
+	if len(offlineMsgs) != 0 {
+		t.Errorf("expected 0 offline messages stored locally, got %d", len(offlineMsgs))
+	}
+}
+
+func TestRouteChatWithHashRingSelfOffline(t *testing.T) {
+	h := NewHub(100)
+	sg, _ := snowflake.New(1)
+	r := NewRouter(h, h, sg, nil, DefaultRouterConfig())
+
+	// 哈希环只有 "gw-1"（自身）→ 所有目标在本地离线存储。
+	hr := makeHashRing("gw-1")
+	r.SetHashRing(hr)
+	r.SetThisNodeID("gw-1")
+
+	fw := &mockForwarder{delivered: true}
+	r.SetForwarder(fw)
+
+	sender := newTestClient(t, "alice", "Alice")
+	r.Route(context.Background(), sender, &proto.Message{
+		Cmd:      proto.CmdChat,
+		From:     "alice",
+		To:       "bob",
+		ChatType: proto.ChatTypeSingle,
+		MsgType:  proto.MsgTypeText,
+		Content:  "bob is offline",
+		NeedAck:  true,
+		Seq:      3,
+	})
+
+	// 转发器不应被调用（本节点拥有所有用户）。
+	if len(fw.forwarded) != 0 {
+		t.Errorf("expected 0 forwarded calls, got %d", len(fw.forwarded))
 	}
 
-	func TestRouteChatWithHashRingLocalDelivery(t *testing.T) {
-		h := NewHub(100)
-		sg, _ := snowflake.New(1)
-		r := NewRouter(h, h, sg, nil, DefaultRouterConfig())
-
-		// 哈希环包含 gw-1；本节点是 gw-1 → bob 归我们所有。
-		hr := makeHashRing("gw-1", "gw-2")
-		r.SetHashRing(hr)
-		r.SetThisNodeID("gw-1")
-
-		// 目标已本地连接。
-		target := newTestClient(t, "bob", "Bob")
-		h.Register(context.Background(), target)
-
-		sender := newTestClient(t, "alice", "Alice")
-		r.Route(context.Background(), sender, &proto.Message{
-			Cmd:      proto.CmdChat,
-			From:     "alice",
-			To:       "bob",
-			ChatType: proto.ChatTypeSingle,
-			MsgType:  proto.MsgTypeText,
-			Content:  "hello via hash ring",
-			NeedAck:  true,
-			Seq:      1,
-		})
-
-		// 目标应在本地收到消息。
-		delivered := readMessageFromChan(t, target.send)
-		if delivered.Content != "hello via hash ring" {
-			t.Errorf("expected content 'hello via hash ring', got '%s'", delivered.Content)
-		}
-
-		// 发送者应收到 ACK。
-		ack := readMessageFromChan(t, sender.send)
-		if ack.Cmd != proto.CmdAck {
-			t.Errorf("expected ACK, got cmd=%d", ack.Cmd)
-		}
-		if ack.Seq != 1 {
-			t.Errorf("expected ACK Seq=1, got Seq=%d", ack.Seq)
-		}
+	// 消息应在本地离线存储中。
+	offlineMsgs := h.DrainOffline(context.Background(), "bob")
+	if len(offlineMsgs) != 1 {
+		t.Fatalf("expected 1 offline message, got %d", len(offlineMsgs))
+	}
+	if offlineMsgs[0].Content != "bob is offline" {
+		t.Errorf("wrong offline content: %s", offlineMsgs[0].Content)
 	}
 
-	func TestRouteChatWithHashRingPeerForward(t *testing.T) {
-		h := NewHub(100)
-		sg, _ := snowflake.New(1)
-		r := NewRouter(h, h, sg, nil, DefaultRouterConfig())
+	// 发送者应收到 ACK。
+	ack := readMessageFromChan(t, sender.send)
+	if ack.Cmd != proto.CmdAck {
+		t.Errorf("expected ACK, got cmd=%d", ack.Cmd)
+	}
+}
 
-		// 哈希环只有 "gw-2"（不是自身）→ 所有目标转发到 gw-2。
-		hr := makeHashRing("gw-2")
-		r.SetHashRing(hr)
-		r.SetThisNodeID("gw-1")
+func TestRouteChatForwardFailsFallback(t *testing.T) {
+	h := NewHub(100)
+	sg, _ := snowflake.New(1)
+	r := NewRouter(h, h, sg, nil, DefaultRouterConfig())
 
-		fw := &mockForwarder{delivered: true}
-		r.SetForwarder(fw)
+	// 哈希环只有 "gw-2"（不是自身）→ 将尝试转发。
+	hr := makeHashRing("gw-2")
+	r.SetHashRing(hr)
+	r.SetThisNodeID("gw-1")
 
-		// Bob 未在本地注册。
-		sender := newTestClient(t, "alice", "Alice")
-		r.Route(context.Background(), sender, &proto.Message{
-			Cmd:      proto.CmdChat,
-			From:     "alice",
-			To:       "bob",
-			ChatType: proto.ChatTypeSingle,
-			MsgType:  proto.MsgTypeText,
-			Content:  "forward me",
-			NeedAck:  true,
-			Seq:      2,
-		})
+	// 转发器返回错误（模拟网络故障）。
+	fw := &mockForwarder{err: fmt.Errorf("connection refused")}
+	r.SetForwarder(fw)
 
-		// 转发器应已被调用。
-		if len(fw.forwarded) != 1 {
-			t.Fatalf("expected 1 forwarded call, got %d", len(fw.forwarded))
-		}
-		if fw.forwarded[0].UID != "bob" {
-			t.Errorf("forwarded to wrong UID: %s", fw.forwarded[0].UID)
-		}
-		if fw.forwarded[0].Msg.Content != "forward me" {
-			t.Errorf("forwarded wrong content: %s", fw.forwarded[0].Msg.Content)
-		}
+	sender := newTestClient(t, "alice", "Alice")
+	r.Route(context.Background(), sender, &proto.Message{
+		Cmd:      proto.CmdChat,
+		From:     "alice",
+		To:       "bob",
+		ChatType: proto.ChatTypeSingle,
+		MsgType:  proto.MsgTypeText,
+		Content:  "forward will fail",
+		NeedAck:  true,
+		Seq:      4,
+	})
 
-		// 发送者应收到 ACK。
-		ack := readMessageFromChan(t, sender.send)
-		if ack.Cmd != proto.CmdAck {
-			t.Errorf("expected ACK, got cmd=%d", ack.Cmd)
-		}
-
-		// 本地离线存储中无消息（对端已处理）。
-		offlineMsgs := h.DrainOffline(context.Background(), "bob")
-		if len(offlineMsgs) != 0 {
-			t.Errorf("expected 0 offline messages stored locally, got %d", len(offlineMsgs))
-		}
+	// 转发器已被调用。
+	if len(fw.forwarded) != 1 {
+		t.Fatalf("expected 1 forwarded call, got %d", len(fw.forwarded))
 	}
 
-	func TestRouteChatWithHashRingSelfOffline(t *testing.T) {
-		h := NewHub(100)
-		sg, _ := snowflake.New(1)
-		r := NewRouter(h, h, sg, nil, DefaultRouterConfig())
-
-		// 哈希环只有 "gw-1"（自身）→ 所有目标在本地离线存储。
-		hr := makeHashRing("gw-1")
-		r.SetHashRing(hr)
-		r.SetThisNodeID("gw-1")
-
-		fw := &mockForwarder{delivered: true}
-		r.SetForwarder(fw)
-
-		sender := newTestClient(t, "alice", "Alice")
-		r.Route(context.Background(), sender, &proto.Message{
-			Cmd:      proto.CmdChat,
-			From:     "alice",
-			To:       "bob",
-			ChatType: proto.ChatTypeSingle,
-			MsgType:  proto.MsgTypeText,
-			Content:  "bob is offline",
-			NeedAck:  true,
-			Seq:      3,
-		})
-
-		// 转发器不应被调用（本节点拥有所有用户）。
-		if len(fw.forwarded) != 0 {
-			t.Errorf("expected 0 forwarded calls, got %d", len(fw.forwarded))
-		}
-
-		// 消息应在本地离线存储中。
-		offlineMsgs := h.DrainOffline(context.Background(), "bob")
-		if len(offlineMsgs) != 1 {
-			t.Fatalf("expected 1 offline message, got %d", len(offlineMsgs))
-		}
-		if offlineMsgs[0].Content != "bob is offline" {
-			t.Errorf("wrong offline content: %s", offlineMsgs[0].Content)
-		}
-
-		// 发送者应收到 ACK。
-		ack := readMessageFromChan(t, sender.send)
-		if ack.Cmd != proto.CmdAck {
-			t.Errorf("expected ACK, got cmd=%d", ack.Cmd)
-		}
+	// 回退：消息存储在本地离线存储中。
+	offlineMsgs := h.DrainOffline(context.Background(), "bob")
+	if len(offlineMsgs) != 1 {
+		t.Fatalf("expected 1 fallback offline message, got %d", len(offlineMsgs))
+	}
+	if offlineMsgs[0].Content != "forward will fail" {
+		t.Errorf("wrong fallback content: %s", offlineMsgs[0].Content)
 	}
 
-	func TestRouteChatForwardFailsFallback(t *testing.T) {
-		h := NewHub(100)
-		sg, _ := snowflake.New(1)
-		r := NewRouter(h, h, sg, nil, DefaultRouterConfig())
-
-		// 哈希环只有 "gw-2"（不是自身）→ 将尝试转发。
-		hr := makeHashRing("gw-2")
-		r.SetHashRing(hr)
-		r.SetThisNodeID("gw-1")
-
-		// 转发器返回错误（模拟网络故障）。
-		fw := &mockForwarder{err: fmt.Errorf("connection refused")}
-		r.SetForwarder(fw)
-
-		sender := newTestClient(t, "alice", "Alice")
-		r.Route(context.Background(), sender, &proto.Message{
-			Cmd:      proto.CmdChat,
-			From:     "alice",
-			To:       "bob",
-			ChatType: proto.ChatTypeSingle,
-			MsgType:  proto.MsgTypeText,
-			Content:  "forward will fail",
-			NeedAck:  true,
-			Seq:      4,
-		})
-
-		// 转发器已被调用。
-		if len(fw.forwarded) != 1 {
-			t.Fatalf("expected 1 forwarded call, got %d", len(fw.forwarded))
-		}
-
-		// 回退：消息存储在本地离线存储中。
-		offlineMsgs := h.DrainOffline(context.Background(), "bob")
-		if len(offlineMsgs) != 1 {
-			t.Fatalf("expected 1 fallback offline message, got %d", len(offlineMsgs))
-		}
-		if offlineMsgs[0].Content != "forward will fail" {
-			t.Errorf("wrong fallback content: %s", offlineMsgs[0].Content)
-		}
-
-		// 发送者仍收到 ACK。
-		ack := readMessageFromChan(t, sender.send)
-		if ack.Cmd != proto.CmdAck {
-			t.Errorf("expected ACK, got cmd=%d", ack.Cmd)
-		}
+	// 发送者仍收到 ACK。
+	ack := readMessageFromChan(t, sender.send)
+	if ack.Cmd != proto.CmdAck {
+		t.Errorf("expected ACK, got cmd=%d", ack.Cmd)
 	}
+}
 
 // ---------- 群聊 ----------
 

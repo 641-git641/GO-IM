@@ -41,8 +41,8 @@ type ClusterManager struct {
 	wg     sync.WaitGroup
 
 	// 跟踪当前在哈希环中的对端(健康状态)。
-	mu          sync.RWMutex
-	peerHealth  map[string]bool // nodeID → 当前是否健康(在哈希环中)
+	mu         sync.RWMutex
+	peerHealth map[string]bool // nodeID → 当前是否健康(在哈希环中)
 }
 
 // ClusterConfig 保存 ClusterManager 的设置。

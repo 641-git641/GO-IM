@@ -36,11 +36,11 @@ type GroupStore interface {
 
 // 群操作的哨兵错误。
 var (
-	ErrGroupNotFound  = errors.New("group not found")
-	ErrNotOwner       = errors.New("only the group owner can perform this action")
-	ErrAlreadyMember  = errors.New("user is already a member of this group")
-	ErrNotMember      = errors.New("user is not a member of this group")
-	ErrGroupIDExists  = errors.New("group ID already exists")
+	ErrGroupNotFound = errors.New("group not found")
+	ErrNotOwner      = errors.New("only the group owner can perform this action")
+	ErrAlreadyMember = errors.New("user is already a member of this group")
+	ErrNotMember     = errors.New("user is not a member of this group")
+	ErrGroupIDExists = errors.New("group ID already exists")
 )
 
 // InMemoryGroupStore 用内存映射实现 GroupStore。

@@ -24,15 +24,15 @@ type Router struct {
 	snow        *snowflake.Generator
 	dedup       *DedupCache
 	rateLimit   *RateLimiter
-	rateLimitMu sync.Mutex   // 在 SetRateLimit 重配置期间保护 rateLimit 字段
+	rateLimitMu sync.Mutex        // 在 SetRateLimit 重配置期间保护 rateLimit 字段
 	msgStore    repo.MessageStore // MySQL 禁用时为 nil
-	kafka       *mq.Producer    // Kafka 禁用时为 nil
+	kafka       *mq.Producer      // Kafka 禁用时为 nil
 	logicClient *LogicClient      // gRPC Logic 服务禁用时为 nil
 
 	// 多网关水平扩展(nil/空 = 单节点模式)。
-	hashRing   *HashRing  // 多网关禁用时为 nil
-	forwarder  Forwarder  // 多网关禁用时为 nil
-	thisNodeID string     // 多网关禁用时为 ""
+	hashRing   *HashRing // 多网关禁用时为 nil
+	forwarder  Forwarder // 多网关禁用时为 nil
+	thisNodeID string    // 多网关禁用时为 ""
 
 	// 群聊支持(nil = 群聊禁用)。
 	groupStore GroupStore // 群聊未初始化时为 nil
@@ -337,7 +337,6 @@ func (r *Router) handleRecall(ctx context.Context, sender *Client, msg *proto.Me
 
 	// 安全:用已认证的发送方 UID 覆盖 From 字段。
 	msg.From = sender.UID
-
 
 	// 在持久化存储中将原消息标记为已撤回。
 	// 撤回窗口由存储层通过消息时间戳强制执行。

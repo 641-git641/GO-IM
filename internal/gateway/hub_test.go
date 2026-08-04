@@ -27,9 +27,9 @@ func newTestClient(t *testing.T, uid, username string) *Client {
 func TestRegisterAndGet(t *testing.T) {
 	h := NewHub(100)
 	c := newTestClient(t, "alice", "Alice")
-	h.Register(context.Background(),c)
+	h.Register(context.Background(), c)
 
-	got := h.Get(context.Background(),"alice")
+	got := h.Get(context.Background(), "alice")
 	if got != c {
 		t.Fatal("Get returned nil or wrong client")
 	}
@@ -41,10 +41,10 @@ func TestRegisterAndGet(t *testing.T) {
 func TestUnregister(t *testing.T) {
 	h := NewHub(100)
 	c := newTestClient(t, "alice", "Alice")
-	h.Register(context.Background(),c)
+	h.Register(context.Background(), c)
 	h.Unregister(context.Background(), c)
 
-	if h.Get(context.Background(),"alice") != nil {
+	if h.Get(context.Background(), "alice") != nil {
 		t.Error("expected nil after Unregister")
 	}
 }
@@ -52,18 +52,18 @@ func TestUnregister(t *testing.T) {
 func TestIsOnline(t *testing.T) {
 	h := NewHub(100)
 
-	if h.IsOnline(context.Background(),"alice") {
+	if h.IsOnline(context.Background(), "alice") {
 		t.Error("alice should be offline initially")
 	}
 
-	h.Register(context.Background(),newTestClient(t, "alice", "Alice"))
-	if !h.IsOnline(context.Background(),"alice") {
+	h.Register(context.Background(), newTestClient(t, "alice", "Alice"))
+	if !h.IsOnline(context.Background(), "alice") {
 		t.Error("alice should be online after Register")
 	}
 
 	alice := h.Get(context.Background(), "alice")
 	h.Unregister(context.Background(), alice)
-	if h.IsOnline(context.Background(),"alice") {
+	if h.IsOnline(context.Background(), "alice") {
 		t.Error("alice should be offline after Unregister")
 	}
 }
@@ -75,12 +75,12 @@ func TestCount(t *testing.T) {
 		t.Errorf("expected 0, got %d", h.Count(context.Background()))
 	}
 
-	h.Register(context.Background(),newTestClient(t, "alice", "Alice"))
+	h.Register(context.Background(), newTestClient(t, "alice", "Alice"))
 	if h.Count(context.Background()) != 1 {
 		t.Errorf("expected 1, got %d", h.Count(context.Background()))
 	}
 
-	h.Register(context.Background(),newTestClient(t, "bob", "Bob"))
+	h.Register(context.Background(), newTestClient(t, "bob", "Bob"))
 	if h.Count(context.Background()) != 2 {
 		t.Errorf("expected 2, got %d", h.Count(context.Background()))
 	}
@@ -100,8 +100,8 @@ func TestOnlineUsers(t *testing.T) {
 		t.Errorf("expected empty list, got %v", users)
 	}
 
-	h.Register(context.Background(),newTestClient(t, "alice", "Alice"))
-	h.Register(context.Background(),newTestClient(t, "bob", "Bob"))
+	h.Register(context.Background(), newTestClient(t, "alice", "Alice"))
+	h.Register(context.Background(), newTestClient(t, "bob", "Bob"))
 
 	users = h.OnlineUsers(context.Background())
 	if len(users) != 2 {
@@ -130,10 +130,10 @@ func TestOfflineStoreAndDrain(t *testing.T) {
 	}
 
 	for _, m := range msgs {
-		h.StoreOffline(context.Background(),"alice", m)
+		h.StoreOffline(context.Background(), "alice", m)
 	}
 
-	drained := h.DrainOffline(context.Background(),"alice")
+	drained := h.DrainOffline(context.Background(), "alice")
 	if len(drained) != 3 {
 		t.Fatalf("expected 3 messages, got %d", len(drained))
 	}
@@ -144,7 +144,7 @@ func TestOfflineStoreAndDrain(t *testing.T) {
 	}
 
 	// 再次排空应返回空
-	empty := h.DrainOffline(context.Background(),"alice")
+	empty := h.DrainOffline(context.Background(), "alice")
 	if len(empty) != 0 {
 		t.Errorf("expected empty after drain, got %d messages", len(empty))
 	}
@@ -153,7 +153,7 @@ func TestOfflineStoreAndDrain(t *testing.T) {
 func TestDrainEmptyOffline(t *testing.T) {
 	h := NewHub(100)
 
-	msgs := h.DrainOffline(context.Background(),"nonexistent")
+	msgs := h.DrainOffline(context.Background(), "nonexistent")
 	if len(msgs) != 0 {
 		t.Errorf("expected empty slice for nonexistent user, got %d messages", len(msgs))
 	}
@@ -165,10 +165,10 @@ func TestOfflineQueueTruncation(t *testing.T) {
 
 	// 存储超过上限的消息
 	for i := 0; i < maxSize+5; i++ {
-		h.StoreOffline(context.Background(),"alice", &proto.Message{MsgId: int64(i)})
+		h.StoreOffline(context.Background(), "alice", &proto.Message{MsgId: int64(i)})
 	}
 
-	drained := h.DrainOffline(context.Background(),"alice")
+	drained := h.DrainOffline(context.Background(), "alice")
 	if len(drained) != maxSize {
 		t.Fatalf("expected %d messages after truncation, got %d", maxSize, len(drained))
 	}
@@ -185,15 +185,15 @@ func TestOfflineQueueTruncation(t *testing.T) {
 func TestOfflinePerUserIsolation(t *testing.T) {
 	h := NewHub(100)
 
-	h.StoreOffline(context.Background(),"alice", &proto.Message{MsgId: 1, Content: "for alice"})
-	h.StoreOffline(context.Background(),"bob", &proto.Message{MsgId: 2, Content: "for bob"})
+	h.StoreOffline(context.Background(), "alice", &proto.Message{MsgId: 1, Content: "for alice"})
+	h.StoreOffline(context.Background(), "bob", &proto.Message{MsgId: 2, Content: "for bob"})
 
-	aliceMsgs := h.DrainOffline(context.Background(),"alice")
+	aliceMsgs := h.DrainOffline(context.Background(), "alice")
 	if len(aliceMsgs) != 1 || aliceMsgs[0].Content != "for alice" {
 		t.Errorf("alice got wrong messages: %+v", aliceMsgs)
 	}
 
-	bobMsgs := h.DrainOffline(context.Background(),"bob")
+	bobMsgs := h.DrainOffline(context.Background(), "bob")
 	if len(bobMsgs) != 1 || bobMsgs[0].Content != "for bob" {
 		t.Errorf("bob got wrong messages: %+v", bobMsgs)
 	}

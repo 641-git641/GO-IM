@@ -15,7 +15,7 @@ import (
 type mockMessageStore struct {
 	mu      sync.Mutex
 	saved   []*proto.Message
-	saveErr error                    // 非 nil 时模拟存储故障
+	saveErr error // 非 nil 时模拟存储故障
 	saveFn  func(msg *proto.Message) error
 }
 

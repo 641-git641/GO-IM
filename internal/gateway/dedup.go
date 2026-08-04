@@ -32,7 +32,7 @@ type DedupCache struct {
 
 	// Redis 持久化(可选 —— nil 表示仅内存)。
 	redis      *redis.Client
-	redisKeyPF string // 键前缀,默认为 "im:dedup:"
+	redisKeyPF string        // 键前缀,默认为 "im:dedup:"
 	redisSem   chan struct{} // 限制并发 Redis 异步写入数量,默认为 64
 }
 

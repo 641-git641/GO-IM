@@ -85,7 +85,7 @@ type GnetHandler struct {
 
 	engine    gnet.Engine // 由 OnBoot 设置,用于优雅关闭
 	engineSet bool
-	connMap   sync.Map    // fd(int) → *Client 连接映射
+	connMap   sync.Map // fd(int) → *Client 连接映射
 }
 
 // NewGnetHandler 创建一个 GnetHandler。

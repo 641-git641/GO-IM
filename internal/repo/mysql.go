@@ -152,35 +152,35 @@ func (s *MySQLStore) migrate() error {
 		}
 	}
 
-		// 为现有数据库添加 recalled 列（尽力而为的迁移）。
-		recallDDL := `ALTER TABLE messages ADD COLUMN recalled TINYINT NOT NULL DEFAULT 0`
-		if _, err := s.db.Exec(recallDDL); err != nil {
-			if strings.Contains(err.Error(), "Error 1060") {
-				log.Printf("[mysql] recalled column already exists (this is OK)")
-			} else {
-				log.Printf("[mysql] WARNING: recall column migration failed (recall may not work): %v", err)
-			}
+	// 为现有数据库添加 recalled 列（尽力而为的迁移）。
+	recallDDL := `ALTER TABLE messages ADD COLUMN recalled TINYINT NOT NULL DEFAULT 0`
+	if _, err := s.db.Exec(recallDDL); err != nil {
+		if strings.Contains(err.Error(), "Error 1060") {
+			log.Printf("[mysql] recalled column already exists (this is OK)")
+		} else {
+			log.Printf("[mysql] WARNING: recall column migration failed (recall may not work): %v", err)
 		}
+	}
 
-		// 为管理员用户添加 role 列（尽力而为的迁移）。
-		roleDDL := `ALTER TABLE users ADD COLUMN role VARCHAR(16) NOT NULL DEFAULT 'user'`
-		if _, err := s.db.Exec(roleDDL); err != nil {
-			if strings.Contains(err.Error(), "Error 1060") {
-				log.Printf("[mysql] role column already exists (this is OK)")
-			} else {
-				log.Printf("[mysql] WARNING: role column migration failed: %v", err)
-			}
+	// 为管理员用户添加 role 列（尽力而为的迁移）。
+	roleDDL := `ALTER TABLE users ADD COLUMN role VARCHAR(16) NOT NULL DEFAULT 'user'`
+	if _, err := s.db.Exec(roleDDL); err != nil {
+		if strings.Contains(err.Error(), "Error 1060") {
+			log.Printf("[mysql] role column already exists (this is OK)")
+		} else {
+			log.Printf("[mysql] WARNING: role column migration failed: %v", err)
 		}
+	}
 
-		// 添加 is_disabled 列用于禁用用户（尽力而为的迁移）。
-		disabledDDL := `ALTER TABLE users ADD COLUMN is_disabled TINYINT NOT NULL DEFAULT 0`
-		if _, err := s.db.Exec(disabledDDL); err != nil {
-			if strings.Contains(err.Error(), "Error 1060") {
-				log.Printf("[mysql] is_disabled column already exists (this is OK)")
-			} else {
-				log.Printf("[mysql] WARNING: is_disabled column migration failed: %v", err)
-			}
+	// 添加 is_disabled 列用于禁用用户（尽力而为的迁移）。
+	disabledDDL := `ALTER TABLE users ADD COLUMN is_disabled TINYINT NOT NULL DEFAULT 0`
+	if _, err := s.db.Exec(disabledDDL); err != nil {
+		if strings.Contains(err.Error(), "Error 1060") {
+			log.Printf("[mysql] is_disabled column already exists (this is OK)")
+		} else {
+			log.Printf("[mysql] WARNING: is_disabled column migration failed: %v", err)
 		}
+	}
 	return nil
 }
 

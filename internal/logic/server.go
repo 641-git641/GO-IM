@@ -15,7 +15,7 @@ import (
 type Server struct {
 	proto.UnimplementedLogicServer
 	mysql       *repo.MySQLStore
-	userRepo    repo.UserStore        // 用于 GetUser
+	userRepo    repo.UserStore         // 用于 GetUser
 	groupStore  *repo.MySQLGroupStore  // 用于群组 RPC
 	unreadStore *repo.MySQLUnreadStore // 用于未读 RPC
 }

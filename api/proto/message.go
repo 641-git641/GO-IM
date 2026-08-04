@@ -6,14 +6,14 @@ import "errors"
 
 // 命令类型。
 const (
-	CmdNone      int32 = 0 // 哨兵值：未设置命令（未初始化的消息）
-	CmdChat      int32 = 1 // 聊天消息
-	CmdAck       int32 = 2 // 确认应答
-	CmdLogin     int32 = 3 // 登录请求
-	CmdLoginResp int32 = 4 // 登录响应
-	CmdOffline   int32 = 5 // 请求离线消息
-	CmdHeartbeat int32 = 6 // 心跳 ping/pong
-	CmdKick      int32 = 7 // 服务器主动踢下线（多设备场景）
+	CmdNone        int32 = 0  // 哨兵值：未设置命令（未初始化的消息）
+	CmdChat        int32 = 1  // 聊天消息
+	CmdAck         int32 = 2  // 确认应答
+	CmdLogin       int32 = 3  // 登录请求
+	CmdLoginResp   int32 = 4  // 登录响应
+	CmdOffline     int32 = 5  // 请求离线消息
+	CmdHeartbeat   int32 = 6  // 心跳 ping/pong
+	CmdKick        int32 = 7  // 服务器主动踢下线（多设备场景）
 	CmdHistory     int32 = 8  // 请求消息历史记录
 	CmdReadReceipt int32 = 9  // 已读回执：客户端确认已读消息
 	CmdUnreadCount int32 = 10 // 未读数量的请求/响应

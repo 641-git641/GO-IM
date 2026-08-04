@@ -12,9 +12,9 @@ type User struct {
 	UID          string `json:"uid"`
 	Username     string `json:"username"`
 	PasswordHash string `json:"-"`
-	Role         string `json:"role"`         // "user" 或 "admin"
+	Role         string `json:"role"` // "user" 或 "admin"
 	IsDisabled   bool   `json:"is_disabled"`
-	CreatedAt    int64  `json:"created_at"`   // 毫秒级 Unix 时间戳
+	CreatedAt    int64  `json:"created_at"` // 毫秒级 Unix 时间戳
 }
 
 // UserStore 管理用户持久化。
@@ -70,7 +70,7 @@ type Friend struct {
 // FriendRequest 表示一条收到的好友请求（从接收方的角度）。
 type FriendRequest struct {
 	FromUID   string `json:"from_uid"`
-	Username  string `json:"username"`  // 请求方的显示名称（如果已知）
+	Username  string `json:"username"`   // 请求方的显示名称（如果已知）
 	CreatedAt int64  `json:"created_at"` // 毫秒级 Unix 时间戳
 }
 

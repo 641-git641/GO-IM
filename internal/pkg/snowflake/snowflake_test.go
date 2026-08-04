@@ -152,7 +152,7 @@ func TestExtractTimestamp(t *testing.T) {
 
 	extracted := ExtractTimestamp(id)
 
-	if extracted.Before(before.Add(-100*time.Millisecond)) {
+	if extracted.Before(before.Add(-100 * time.Millisecond)) {
 		t.Errorf("extracted timestamp %v is before generation window start %v", extracted, before)
 	}
 	if extracted.After(after.Add(100 * time.Millisecond)) {

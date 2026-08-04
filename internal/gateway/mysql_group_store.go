@@ -17,9 +17,9 @@ var _ GroupStore = (*MySQLGroupStore)(nil)
 // 在 repo 层的 GroupRow 类型与 gateway 层的 Group 类型
 // (包含已填充的 Members 映射)之间做映射。
 type MySQLGroupStore struct {
-	db   *sql.DB                 // 保留以备直接访问之需
-	snow *snowflake.Generator    // 保留用于生成 ID
-	repo *repo.MySQLGroupStore   // SQL 操作的唯一来源
+	db   *sql.DB               // 保留以备直接访问之需
+	snow *snowflake.Generator  // 保留用于生成 ID
+	repo *repo.MySQLGroupStore // SQL 操作的唯一来源
 }
 
 // NewMySQLGroupStore 使用现有的数据库连接创建一个 MySQLGroupStore。

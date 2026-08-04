@@ -139,8 +139,8 @@ func (m *mockGnetConn) Writev(bs [][]byte) (int, error) {
 	return total, nil
 }
 
-func (m *mockGnetConn) Flush() error             { return nil }
-func (m *mockGnetConn) OutboundBuffered() int     { return 0 }
+func (m *mockGnetConn) Flush() error          { return nil }
+func (m *mockGnetConn) OutboundBuffered() int { return 0 }
 
 func (m *mockGnetConn) AsyncWrite(buf []byte, cb gnet.AsyncCallback) error {
 	m.mu.Lock()
@@ -161,11 +161,11 @@ func (m *mockGnetConn) AsyncWritev(bs [][]byte, cb gnet.AsyncCallback) error {
 
 // ---- Socket 接口（Fd、Dup、SetReadBuffer、SetWriteBuffer、SetLinger、SetKeepAlivePeriod、SetKeepAlive、SetNoDelay）----
 
-func (m *mockGnetConn) Fd() int                       { return m.fd }
-func (m *mockGnetConn) Dup() (int, error)              { return m.fd + 1000, nil }
-func (m *mockGnetConn) SetReadBuffer(size int) error   { return nil }
-func (m *mockGnetConn) SetWriteBuffer(size int) error  { return nil }
-func (m *mockGnetConn) SetLinger(secs int) error       { return nil }
+func (m *mockGnetConn) Fd() int                                  { return m.fd }
+func (m *mockGnetConn) Dup() (int, error)                        { return m.fd + 1000, nil }
+func (m *mockGnetConn) SetReadBuffer(size int) error             { return nil }
+func (m *mockGnetConn) SetWriteBuffer(size int) error            { return nil }
+func (m *mockGnetConn) SetLinger(secs int) error                 { return nil }
 func (m *mockGnetConn) SetKeepAlivePeriod(d time.Duration) error { return nil }
 func (m *mockGnetConn) SetKeepAlive(enabled bool, idle, intvl time.Duration, cnt int) error {
 	return nil
@@ -189,12 +189,12 @@ func (m *mockGnetConn) RemoteAddr() net.Addr {
 	return &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 12345}
 }
 
-func (m *mockGnetConn) Wake(cb gnet.AsyncCallback) error           { return nil }
+func (m *mockGnetConn) Wake(cb gnet.AsyncCallback) error              { return nil }
 func (m *mockGnetConn) CloseWithCallback(cb gnet.AsyncCallback) error { m.closed = true; return nil }
-func (m *mockGnetConn) Close() error                               { m.closed = true; return nil }
-func (m *mockGnetConn) SetDeadline(t time.Time) error              { return nil }
-func (m *mockGnetConn) SetReadDeadline(t time.Time) error          { return nil }
-func (m *mockGnetConn) SetWriteDeadline(t time.Time) error         { return nil }
+func (m *mockGnetConn) Close() error                                  { m.closed = true; return nil }
+func (m *mockGnetConn) SetDeadline(t time.Time) error                 { return nil }
+func (m *mockGnetConn) SetReadDeadline(t time.Time) error             { return nil }
+func (m *mockGnetConn) SetWriteDeadline(t time.Time) error            { return nil }
 
 // EventLoop 返回 nil —— GnetHandler 代码路径不会调用它。
 func (m *mockGnetConn) EventLoop() gnet.EventLoop { return nil }
@@ -239,10 +239,10 @@ func newTestGnetHandler(t *testing.T) (*GnetHandler, *Hub, *jwt.Manager) {
 	ctx := context.Background()
 	handler := NewGnetHandler(
 		ctx, router, hub, jwtMgr,
-		256,                     // sendBufSize
-		65536,                   // maxMsgSize
-		200*time.Millisecond,    // heartbeatTimeout（为测试设短）
-		4,                       // workerPoolSize
+		256,                  // sendBufSize
+		65536,                // maxMsgSize
+		200*time.Millisecond, // heartbeatTimeout（为测试设短）
+		4,                    // workerPoolSize
 	)
 	return handler, hub, jwtMgr
 }
@@ -906,10 +906,10 @@ func TestHeartbeatCheckerKeepsActiveConnections(t *testing.T) {
 	ctx := context.Background()
 	handler := NewGnetHandler(
 		ctx, router, hub, jwtMgr,
-		256,                  // sendBufSize
-		65536,                // maxMsgSize
-		10*time.Second,       // heartbeatTimeout —— 很长，不会触发
-		4,                    // workerPoolSize
+		256,            // sendBufSize
+		65536,          // maxMsgSize
+		10*time.Second, // heartbeatTimeout —— 很长，不会触发
+		4,              // workerPoolSize
 	)
 
 	c := newMockGnetConn(11)

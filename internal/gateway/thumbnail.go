@@ -80,6 +80,6 @@ func IsImageMIME(mime string) bool {
 }
 
 // 通过导入确保解码器可用。
-var _ = gif.Decode       // gif 解码器
-var _ = png.Decode       // png 解码器
-var _ = jpeg.Decode      // jpeg 解码器
+var _ = gif.Decode  // gif 解码器
+var _ = png.Decode  // png 解码器
+var _ = jpeg.Decode // jpeg 解码器

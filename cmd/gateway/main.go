@@ -28,7 +28,7 @@ type App struct {
 	Config        *configs.Config
 	redisClient   *redis.Client           // Redis 禁用或不可用时为 nil
 	mysqlStore    *repo.MySQLStore        // MySQL 禁用时为 nil
-	kafkaProducer *mq.Producer           // Kafka 禁用时为 nil
+	kafkaProducer *mq.Producer            // Kafka 禁用时为 nil
 	logicClient   *gateway.LogicClient    // Logic gRPC 禁用时为 nil
 	grpcServer    *grpc.Server            // gRPC 禁用（单节点模式）时为 nil
 	grpcForwarder *gateway.GrpcForwarder  // 多网关禁用时为 nil
