@@ -10,55 +10,52 @@
 
 ### 1.1 架构全景图
 
+```mermaid
+flowchart TD
+    subgraph CLIENT["客户端层 CLIENT LAYER"]
+        Mobile["Mobile<br/>(Flutter)"]
+        Web["Web<br/>(React)"]
+        PC["PC<br/>(Electron)"]
+    end
+
+    subgraph GATEWAY["接入层 GATEWAY LAYER"]
+        WSHandler["WS Handler<br/>(gorilla/websocket)"]
+        TCPHandler["TCP Handler<br/>(gnet)"]
+        HTTPAPI["HTTP API<br/>(net/http)"]
+        ConnectionHub["Connection Hub<br/>UID → *Client"]
+        MessageRouter["Router<br/>消息路由 / ACK / 心跳"]
+
+        WSHandler --> ConnectionHub
+        TCPHandler --> ConnectionHub
+        HTTPAPI --> ConnectionHub
+        ConnectionHub --> MessageRouter
+    end
+
+    subgraph LOGIC["逻辑层 LOGIC LAYER"]
+        Route["消息路由"]
+        Session["会话管理"]
+        Group["群组管理"]
+        Offline["离线处理"]
+    end
+
+    subgraph STORAGE["存储层 STORAGE LAYER"]
+        MySQL["MySQL<br/>用户 / 消息表"]
+        Redis["Redis<br/>会话 / 在线态"]
+        Kafka["Kafka / NSQ<br/>消息队列"]
+    end
+
+    Mobile -->|WebSocket / TCP| GATEWAY
+    Web -->|WebSocket / TCP| GATEWAY
+    PC -->|WebSocket / TCP| GATEWAY
+    MessageRouter -->|gRPC Phase 3| LOGIC
+    Route --> MySQL
+    Session --> Redis
+    Group --> MySQL
+    Offline --> Redis
+    Offline --> Kafka
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                        CLIENT LAYER                          │
-│   ┌──────────┐  ┌──────────┐  ┌──────────┐                  │
-│   │  Mobile   │  │   Web    │  │    PC    │                  │
-│   │ (Flutter) │  │  (React) │  │  (Elect) │                  │
-│   └─────┬─────┘  └─────┬────┘  └────┬─────┘                  │
-│         │              │             │                        │
-│         └──────────────┼─────────────┘                        │
-│                        │ WebSocket / TCP                      │
-└────────────────────────┼──────────────────────────────────────┘
-                         │
-┌────────────────────────┼──────────────────────────────────────┐
-│                   GATEWAY LAYER (接入层)                       │
-│   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
-│   │  WS Handler  │  │ TCP Handler  │  │  HTTP API    │       │
-│   │ (gorilla/ws) │  │   (gnet)     │  │ (net/http)   │       │
-│   └──────┬───────┘  └──────┬───────┘  └──────┬───────┘       │
-│          │                 │                 │                 │
-│          └─────────────────┼─────────────────┘                 │
-│                    ┌───────┴───────┐                          │
-│                    │  Connection   │                          │
-│                    │     Hub       │   UID → *Client          │
-│                    └───────┬───────┘                          │
-│                            │                                   │
-│                    ┌───────┴───────┐                          │
-│                    │    Router     │  消息路由/ACK/心跳        │
-│                    └───────┬───────┘                          │
-└────────────────────────────┼──────────────────────────────────┘
-                             │ gRPC (Phase 3)
-┌────────────────────────────┼──────────────────────────────────┐
-│                    LOGIC LAYER (逻辑层)                        │
-│   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐    │
-│   │ 消息路由  │  │ 会话管理  │  │ 群组管理  │  │ 离线处理  │    │
-│   └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘    │
-│        └──────────────┼─────────────┼─────────────┘           │
-│                       │             │                          │
-│              ┌────────┴──────┬──────┴────────┐                │
-│              │               │               │                │
-└──────────────┼───────────────┼───────────────┼────────────────┘
-               │               │               │
-┌──────────────┼───────────────┼───────────────┼────────────────┐
-│         STORAGE LAYER (存储层)                                 │
-│   ┌────────┴────┐  ┌────────┴────┐  ┌────────┴────┐          │
-│   │    MySQL    │  │    Redis    │  │  Kafka/NSQ   │          │
-│   │ 用户/消息表  │  │ 会话/在线态  │  │  消息队列     │          │
-│   └─────────────┘  └─────────────┘  └─────────────┘          │
-└──────────────────────────────────────────────────────────────┘
-```
+
+> 说明:当前 MVP 阶段为单体进程,上述"层"是逻辑分层而非独立进程;随规模增长按此边界拆分(见 §7)。
 
 ---
 
@@ -95,18 +92,20 @@ Protobuf:    体积小 60-80%、编解码快 3-5x、强类型安全、gRPC 原�
 
 ### 2.3 消息可靠性：ACK + 超时重试 + 去重
 
-```
-发送方                           服务端                          接收方
-  │                                │                               │
-  │── seq=1, msg="hello" ────────▶│                               │
-  │                                │── msg_id=1001 ───────────────▶│
-  │                                │                               │── ACK(1001) ──▶│
-  │◀── ACK(1001) ─────────────────│                               │
-  │                                │                               │
-  │  (超时 3s 未收到 ACK)           │                               │
-  │── seq=1, msg="hello" (重传) ──▶│                               │
-  │                                │ (Redis 查询: msg_id=1001 已存在) │
-  │◀── ACK(1001) (去重) ──────────│                               │
+```mermaid
+sequenceDiagram
+    participant S as 发送方
+    participant V as 服务端
+    participant R as 接收方
+
+    S->>V: seq=1, msg="hello"
+    V->>R: msg_id=1001
+    R->>V: ACK(1001)
+    V->>S: ACK(1001)
+    Note over S: 超时 3s 未收到 ACK
+    S->>V: seq=1, msg="hello"(重传)
+    Note over V: Redis 查询: msg_id=1001 已存在
+    V->>S: ACK(1001)(去重)
 ```
 
 **参考案例**：WhatsApp 的消息投递使用类似机制 — 每个消息带唯一 ID，服务端存储投递状态，客户端 ACK 后清除。未 ACK 的消息在重连后重新投递。
@@ -152,26 +151,29 @@ type Message struct {
 
 ### 3.2 连接模型
 
-```
-Client 结构体
-├── UID / Username          (连接认证后的身份)
-├── conn *websocket.Conn    (底层连接)
-├── send chan []byte (256)  (写缓冲，避免阻塞读循环)
-├── closed chan struct{}    (关闭信号，保证 Close() 幂等)
-└── closeOnce sync.Once     (确保只关闭一次)
-
-每个 Client 启动 2 个 goroutine:
-├── readPump  (读循环，阻塞在 conn.ReadMessage())
-└── writePump (写循环，select 多路复用 send/心跳/close)
+```mermaid
+classDiagram
+    class Client {
+        +uid UID / Username 连接认证后的身份
+        +conn 底层连接 websocket.Conn
+        +send 写缓冲 容量256 避免阻塞读循环
+        +closed 关闭信号 保证 Close 幂等
+        +closeOnce 只关闭一次 sync.Once
+        +readPump() 读循环 阻塞在 ReadMessage
+        +writePump() 写循环 select 复用 send/心跳/close
+    }
 ```
 
 ### 3.3 Hub 路由表
 
-```
-Hub
-├── clients  map[string]*Client  (UID → Client，读写锁保护)
-├── offline  map[string][]Message (UID → 离线消息队列，最大 1000 条)
-└── mutex    sync.RWMutex / sync.Mutex
+```mermaid
+classDiagram
+    class Hub {
+        +clients map UID 到 Client 读写锁保护
+        +offline map UID 到离线消息队列 最大1000条
+        +mutex 读写锁
+    }
+    Hub "1" --> "0..*" Client : 持有
 ```
 
 ---
@@ -180,39 +182,45 @@ Hub
 
 ### 4.1 在线消息发送（热路径）
 
-```
-Alice             Gateway:Hub           Gateway:Router       Bob
-  │                    │                     │                │
-  │── WS Text ───────▶│                     │                │
-  │  {"cmd":1,"to":"bob","content":"hi"}   │                │
-  │                    │── route(cmd=1) ───▶│                │
-  │                    │                     │ hub.Get("bob")│
-  │                    │                     │── bob.Send() ─▶│
-  │                    │                     │                │── readPump
-  │                    │                     │◀── ACK ───────│  writePump
-  │◀── ACK ───────────│                     │                │
-  └────────────────────┴─────────────────────┴────────────────┘
-  延迟: ~1-5ms (纯内存操作)
+```mermaid
+sequenceDiagram
+    participant A as Alice
+    participant H as Gateway:Hub
+    participant R as Gateway:Router
+    participant B as Bob
+
+    A->>H: WS Text {"cmd":1,"to":"bob","content":"hi"}
+    H->>R: route(cmd=1)
+    R->>H: hub.Get("bob")
+    R->>B: bob.Send()
+    B-->>R: ACK
+    R-->>A: ACK
+
+    Note over A,B: 延迟: ~1-5ms(纯内存操作)
 ```
 
 ### 4.2 离线消息流程
 
-```
-Alice             Gateway:Hub           Gateway:Router       Bob (离线)
-  │                    │                     │                  │
-  │── {"to":"bob"} ──▶│                     │                  │
-  │                    │                     │ hub.Get("bob")   │
-  │                    │                     │── nil!           │
-  │                    │◀── StoreOffline() ──│                  │
-  │                    │ offline["bob"]      │                  │
-  │◀── ACK ───────────│  .append(msg)       │                  │
-  ...                  ...                  ...                ...
-  │                    │                     │                  │── Bob 上线
-  │                    │◀── Register(bob) ───│                  │
-  │                    │                     │                  │── {"cmd":5}
-  │                    │── DrainOffline() ──▶│                  │
-  │                    │                     │── 逐条 Send() ──▶│
-  └────────────────────┴─────────────────────┴──────────────────┘
+```mermaid
+sequenceDiagram
+    participant A as Alice
+    participant H as Gateway:Hub
+    participant R as Gateway:Router
+    participant B as Bob (离线)
+
+    A->>H: {"to":"bob"}
+    H->>R: route(cmd=1)
+    R->>H: hub.Get("bob")
+    H-->>R: nil(离线)
+    R->>H: StoreOffline()
+    H-->>A: ACK
+
+    Note over H,B: Bob 上线
+    B->>H: Register(bob)
+    B->>R: {"cmd":5}(CmdOffline)
+    R->>H: DrainOffline()
+    H-->>R: 离线消息列表
+    R->>B: 逐条 Send()
 ```
 
 ---
@@ -308,27 +316,20 @@ Hub.clients: map[UID] → map[DeviceID]*Client
 
 **方案**：一致性哈希 + 内部 RPC 转发。
 
-```
-                    ┌──────────────┐
-                    │   Nginx/     │
-                    │   HAProxy    │
-                    │ (IP Hash 或   │
-                    │  随机分配)    │
-                    └──┬───┬───┬──┘
-                       │   │   │
-              ┌────────┼───┼───┼────────┐
-              ▼        ▼   ▼   ▼        ▼
-        ┌─────────┐ ┌─────────┐ ┌─────────┐
-        │Gateway-1│ │Gateway-2│ │Gateway-3│
-        │(节点 A) │ │(节点 B) │ │(节点 C) │
-        └────┬────┘ └────┬────┘ └────┬────┘
-             │           │           │
-             └───────────┼───────────┘
-                         │ gRPC (Phase 3)
-              ┌──────────┴──────────┐
-              │    Logic Layer      │
-              │  (消息持久化/历史)    │
-              └─────────────────────┘
+```mermaid
+flowchart TD
+    LB["Nginx / HAProxy<br/>(IP Hash 或随机分配)"]
+    G1["Gateway-1<br/>(节点 A)"]
+    G2["Gateway-2<br/>(节点 B)"]
+    G3["Gateway-3<br/>(节点 C)"]
+    LOGIC["Logic Layer<br/>(消息持久化 / 历史)"]
+
+    LB --> G1
+    LB --> G2
+    LB --> G3
+    G1 -->|gRPC Phase 3| LOGIC
+    G2 -->|gRPC Phase 3| LOGIC
+    G3 -->|gRPC Phase 3| LOGIC
 ```
 
 **消息路由流程**（两阶段）：
@@ -345,6 +346,8 @@ Hub.clients: map[UID] → map[DeviceID]*Client
 - Gateway-2 本地投递给 Bob 的 WebSocket 连接
 
 **一致性哈希环**：
+
+> 该图保留 ASCII 绘制:哈希环是环形布局,Mermaid 的 flowchart 无法自然表达环状拓扑。
 
 ```
                     0
@@ -382,6 +385,8 @@ hash("carol") = 200 → Gateway-3
 | 跨 Gateway（未来多节点） | MsgID 近似排序 | ⚠️ 可能出现微小乱序 |
 
 **Snowflake ID 的排序特性**：
+
+> 位布局图保留 ASCII 绘制:二进制位对齐表格用文本表达更精确,Mermaid 无法等价呈现。
 
 ```
 MsgID = (timestamp - epoch) << 22 | (workerID << 12) | sequence
@@ -427,25 +432,12 @@ workerID（workerID 大的排在后面，即使实际时间略早）。
 
 ## 7. 后续架构演进路径
 
-```
-Phase 1 (当前):  单体 WebSocket Server + 内存存储
-                  ├── 验证协议设计
-                  ├── 验证消息路由逻辑
-                  └── 验证连接管理模型
+```mermaid
+flowchart LR
+    P1["Phase 1 (当前)<br/>单体 WebSocket Server + 内存存储<br/>- 验证协议设计<br/>- 验证消息路由逻辑<br/>- 验证连接管理模型"]
+    P2["Phase 2<br/>引入 MySQL + Redis<br/>- 用户持久化<br/>- 消息历史查询<br/>- 会话列表缓存"]
+    P3["Phase 3<br/>引入 gRPC + 消息队列<br/>- Gateway 与 Logic 分离<br/>- Kafka/NSQ 削峰解耦<br/>- 多 Gateway 节点水平扩展"]
+    P4["Phase 4<br/>高级特性<br/>- 群聊扩散优化<br/>- 已读/未读<br/>- 多媒体消息<br/>- 消息撤回"]
 
-Phase 2:         引入 MySQL + Redis
-                  ├── 用户持久化
-                  ├── 消息历史查询
-                  └── 会话列表缓存
-
-Phase 3:         引入 gRPC + 消息队列
-                  ├── Gateway ↔ Logic 分离
-                  ├── Kafka/NSQ 削峰解耦
-                  └── 多 Gateway 节点水平扩展
-
-Phase 4:         高级特性
-                  ├── 群聊扩散优化
-                  ├── 已读/未读
-                  ├── 多媒体消息
-                  └── 消息撤回
+    P1 --> P2 --> P3 --> P4
 ```
