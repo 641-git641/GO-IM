@@ -1,24 +1,24 @@
 import { useEffect, useRef } from 'react';
 
-// Common emoji groups for quick access
+// 常用表情分组,便于快速访问
 const EMOJIS = [
-  // Smileys
+  // 笑脸
   '😀', '😃', '😄', '😁', '😅', '😂', '🤣', '😊', '😇', '🙂', '😉', '😌', '😍', '🥰', '😘', '😗', '😋', '😛', '😜', '🤪',
   '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😡', '🤬',
-  // Gestures
+  // 手势
   '👍', '👎', '👌', '✌️', '🤞', '🤟', '🤘', '🤙', '👋', '🤚', '🖐', '✋', '🖖', '👏', '🙌', '🫶', '🤝', '💪', '🦾', '🙏',
-  // Hearts & love
+  // 爱心与爱情
   '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '♥️',
-  // Objects
+  // 物品
   '🎉', '🎊', '🎈', '🎂', '🍰', '🎁', '💡', '🔥', '⭐', '🌟', '✨', '💫', '💥', '💯', '💢', '💦', '💤', '🕶', '👓', '💍',
   '💎', '🎵', '🎶', '🎤', '🎧', '📱', '💻', '🖥', '⌨️', '🖱', '📷', '📹', '🎬', '📚', '📝', '✏️', '📌', '📍', '🗑', '🔒',
-  // Nature
+  // 自然
   '🌈', '☀️', '🌤', '⛅', '🌧', '⛈', '🌩', '❄️', '☃️', '⛄', '🌊', '🍀', '🌸', '🌺', '🌻', '🌹', '💐', '🌴', '🎄', '🌵',
-  // Food
+  // 食物
   '🍕', '🍔', '🍟', '🌭', '🍿', '🧁', '🍩', '🍪', '🎂', '🍰', '🍫', '🍬', '🍭', '☕', '🍵', '🍺', '🍻', '🥂', '🍷', '🥤',
-  // Animals
+  // 动物
   '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🐤', '🦄',
-  // Activities
+  // 活动
   '⚽', '🏀', '🏈', '⚾', '🎾', '🏐', '🎱', '🏓', '🏸', '🥅', '🏒', '🏹', '🎣', '🥊', '🎯', '🪁', '🎮', '🎲', '♟', '🧩',
 ];
 
@@ -30,7 +30,7 @@ interface EmojiPickerProps {
 export default function EmojiPicker({ onSelect, onClose }: EmojiPickerProps) {
   const ref = useRef<HTMLDivElement>(null);
 
-  // Close on click outside
+  // 点击外部时关闭
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
@@ -41,7 +41,7 @@ export default function EmojiPicker({ onSelect, onClose }: EmojiPickerProps) {
     return () => document.removeEventListener('mousedown', handler);
   }, [onClose]);
 
-  // Close on escape
+  // 按 Escape 时关闭
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();

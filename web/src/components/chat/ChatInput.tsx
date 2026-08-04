@@ -15,17 +15,17 @@ interface ChatInputProps {
   uploadProgress?: number;
   disabled?: boolean;
 
-  /** Target peer/group ID (for typing indicators) */
+  /** 目标会话对象/群组 ID(用于输入中指示器) */
   peerId: string;
-  /** Chat type (for typing indicators) */
+  /** 聊天类型(用于输入中指示器) */
   chatType: number;
 
-  /** Group members for @mention autocomplete (empty/undefined = not a group chat) */
+  /** 用于 @提及 自动补全的群组成员(为空/未定义 = 非群聊) */
   groupMembers?: string[];
 
-  /** Currently replying to a message */
+  /** 当前正在回复某条消息 */
   replyTo?: ChatMessage | null;
-  /** Cancel the current reply */
+  /** 取消当前回复 */
   onCancelReply?: () => void;
 }
 
@@ -49,20 +49,20 @@ export default function ChatInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // @mention state
+  // @提及 状态
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
-  const [mentionIdx, setMentionIdx] = useState(0); // cursor position in textarea when @ was typed
+  const [mentionIdx, setMentionIdx] = useState(0); // 输入 @ 时光标在文本域中的位置
 
-  // Emoji picker state
+  // 表情选择器状态
   const [showEmoji, setShowEmoji] = useState(false);
 
-  // Typing indicator (debounced, send every 3s while typing)
+  // 输入中指示器(防抖,输入时每 3 秒发送一次)
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingSentRef = useRef(0);
 
   const sendTyping = useCallback(() => {
     const now = Date.now();
-    if (now - lastTypingSentRef.current < 3000) return; // throttle to every 3s
+    if (now - lastTypingSentRef.current < 3000) return; // 限流:每 3 秒一次
     lastTypingSentRef.current = now;
     wsManager.send({
       seq: '0',
@@ -79,14 +79,14 @@ export default function ChatInput({
   }, [uid, peerId, chatType]);
 
   const handleTyping = useCallback(() => {
-    if (typingTimerRef.current) return; // already scheduled
+    if (typingTimerRef.current) return; // 已排定
     sendTyping();
     typingTimerRef.current = setTimeout(() => {
       typingTimerRef.current = null;
     }, 3000);
   }, [sendTyping]);
 
-  // Cleanup typing timer on unmount
+  // 卸载时清理输入定时器
   const cleanupTyping = () => {
     if (typingTimerRef.current) {
       clearTimeout(typingTimerRef.current);
@@ -103,12 +103,12 @@ export default function ChatInput({
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    // If mention dropdown is open, let MentionSuggestions handle navigation
+    // 若 @提及 下拉已打开,由 MentionSuggestions 处理导航
     if (mentionQuery !== null && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter')) {
-      // Enter/Escape/Arrow keys are handled by MentionSuggestions
+      // Enter/Escape/方向键由 MentionSuggestions 处理
       if (e.key === 'Enter') {
         e.preventDefault();
-        return; // let MentionSuggestions handle it
+        return; // 交由 MentionSuggestions 处理
       }
       return;
     }
@@ -123,10 +123,10 @@ export default function ChatInput({
     const value = e.target.value;
     setText(value);
 
-    // Trigger typing indicator
+    // 触发输入中指示器
     handleTyping();
 
-    // Detect @mention trigger
+    // 检测 @提及 触发
     if (groupMembers && groupMembers.length > 0) {
       const cursorPos = e.target.selectionStart || 0;
       const textBeforeCursor = value.slice(0, cursorPos);
@@ -141,7 +141,7 @@ export default function ChatInput({
     }
   };
 
-  /** Insert emoji at cursor position */
+  /** 在光标位置插入表情 */
   const handleEmojiSelect = (emoji: string) => {
     const ta = textareaRef.current;
     if (!ta) {
@@ -153,7 +153,7 @@ export default function ChatInput({
     const newText = text.slice(0, start) + emoji + text.slice(end);
     setText(newText);
     setShowEmoji(false);
-    // Restore cursor position after emoji
+    // 插入表情后恢复光标位置
     setTimeout(() => {
       ta.focus();
       const pos = start + emoji.length;
@@ -164,14 +164,14 @@ export default function ChatInput({
   const handleMentionSelect = (memberUid: string) => {
     if (mentionQuery === null) return;
 
-    // Replace @query with @uid at the cursor position
-    const before = text.slice(0, mentionIdx - mentionQuery.length - 1); // remove "@query"
+    // 在光标位置将 @query 替换为 @uid
+    const before = text.slice(0, mentionIdx - mentionQuery.length - 1); // 移除 "@query"
     const after = text.slice(mentionIdx);
     const newText = before + '@' + memberUid + ' ' + after;
     setText(newText);
     setMentionQuery(null);
 
-    // Refocus textarea
+    // 重新聚焦文本域
     textareaRef.current?.focus();
   };
 
@@ -190,14 +190,14 @@ export default function ChatInput({
 
     setSelectedFile(file);
 
-    // If onSendFile is provided, upload immediately
+    // 若提供了 onSendFile,则立即上传
     if (onSendFile) {
       onSendFile(file);
       setSelectedFile(null);
     }
   };
 
-  // Truncate reply content for display
+  // 截断回复内容用于展示
   const replyPreview = replyTo
     ? replyTo.content.length > 80
       ? replyTo.content.slice(0, 80) + '...'
@@ -206,7 +206,7 @@ export default function ChatInput({
 
   return (
     <div className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
-      {/* Reply bar */}
+      {/* 回复栏 */}
       {replyTo && (
         <div className="flex items-center gap-2 px-4 py-2 bg-primary-50 dark:bg-primary-900/20 border-b border-primary-100 dark:border-primary-800">
           <CornerUpLeft className="w-4 h-4 text-primary-500 flex-shrink-0" />
@@ -223,7 +223,7 @@ export default function ChatInput({
         </div>
       )}
 
-      {/* Upload progress */}
+      {/* 上传进度 */}
       {uploading && (
         <div className="px-4 pt-2">
           <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
@@ -239,7 +239,7 @@ export default function ChatInput({
         </div>
       )}
 
-      {/* Selected file preview */}
+      {/* 已选文件预览 */}
       {selectedFile && !onSendFile && (
         <div className="px-4 pt-2 flex items-center gap-2">
           <div className="flex-1 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg flex items-center gap-2">
@@ -256,7 +256,7 @@ export default function ChatInput({
 
       <div className="px-4 py-3">
         <div className="flex items-end gap-2 relative">
-          {/* Mention suggestions */}
+          {/* @提及 建议 */}
           {mentionQuery !== null && groupMembers && (
             <div className="absolute bottom-full left-4 mb-1 z-10">
               <MentionSuggestions
@@ -268,7 +268,7 @@ export default function ChatInput({
             </div>
           )}
 
-          {/* Emoji picker */}
+          {/* 表情选择器 */}
           <div className="relative">
             <button
               onClick={() => setShowEmoji(!showEmoji)}
@@ -288,7 +288,7 @@ export default function ChatInput({
             )}
           </div>
 
-          {/* File attach button */}
+          {/* 文件附件按钮 */}
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={disabled}
@@ -305,7 +305,7 @@ export default function ChatInput({
             accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.zip"
           />
 
-          {/* Text input */}
+          {/* 文本输入框 */}
           <textarea
             ref={textareaRef}
             value={text}
@@ -317,7 +317,7 @@ export default function ChatInput({
             className="flex-1 resize-none px-3 py-2 max-h-32 border border-gray-300 dark:border-gray-700 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all disabled:opacity-50 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
           />
 
-          {/* Send button */}
+          {/* 发送按钮 */}
           <button
             onClick={handleSend}
             disabled={!text.trim()}

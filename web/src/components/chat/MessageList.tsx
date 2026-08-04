@@ -13,9 +13,9 @@ interface MessageListProps {
   onForward?: (message: ChatMessage) => void;
   onEdit?: (msgId: string, newText: string) => void;
   onDelete?: (msgId: string) => void;
-  /** Search term for in-conversation highlighting */
+  /** 会话内高亮搜索词 */
   highlight?: string;
-  /** MsgId of the currently focused search match */
+  /** 当前聚焦搜索匹配项的 MsgId */
   currentMatchId?: string;
 }
 
@@ -24,7 +24,7 @@ export default function MessageList({ messages, myUid, onRecall, onReply, onForw
   const containerRef = useRef<HTMLDivElement>(null);
   const shouldAutoScroll = useRef(true);
 
-  // Auto-scroll to bottom on new messages, but only if already near bottom
+  // 新消息时自动滚动到底部,但仅当已接近底部时
   useEffect(() => {
     if (shouldAutoScroll.current) {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -34,7 +34,7 @@ export default function MessageList({ messages, myUid, onRecall, onReply, onForw
   const handleScroll = () => {
     const el = containerRef.current;
     if (!el) return;
-    // If within 100px of bottom, auto-scroll
+    // 若距底部 100px 以内,自动滚动
     const { scrollTop, scrollHeight, clientHeight } = el;
     shouldAutoScroll.current = scrollHeight - scrollTop - clientHeight < 100;
   };
@@ -52,7 +52,7 @@ export default function MessageList({ messages, myUid, onRecall, onReply, onForw
       )}
 
       {messages.map((msg, i) => {
-        // Check if this is a system message (group notification, friend request, etc.)
+        // 检查是否为系统消息(群组通知、好友请求等)
         const sysType = isSystemMessage(msg.content);
         if (sysType) {
           const noticeText = renderSystemNotice(msg.content);
@@ -67,7 +67,7 @@ export default function MessageList({ messages, myUid, onRecall, onReply, onForw
           }
         }
 
-        // Backward compat: also check old notification format
+        // 向后兼容:同时检查旧的通知格式
         if (msg.chatType === ChatType.Group) {
           const notification = isGroupNotification(msg.content);
           if (notification) {

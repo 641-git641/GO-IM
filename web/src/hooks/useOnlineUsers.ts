@@ -10,13 +10,13 @@ export function useOnlineUsers() {
       const data = await getOnlineUsers();
       setOnlineUsers(data.users);
     } catch {
-      // Silently fail — online list is nice-to-have
+      // 静默失败 —— 在线列表只是锦上添花
     }
   }, [setOnlineUsers]);
 
   useEffect(() => {
     refresh();
-    const interval = setInterval(refresh, 30_000); // Poll every 30s
+    const interval = setInterval(refresh, 30_000); // 每 30 秒轮询一次
     return () => clearInterval(interval);
   }, [refresh]);
 

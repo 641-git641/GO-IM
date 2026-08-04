@@ -16,7 +16,7 @@ export function useUnreadCounts() {
         store.setUnreadCounts(data.counts);
       }
     } catch {
-      // Silently fail
+      // 静默失败
     }
   }, [uid]);
 
@@ -26,7 +26,7 @@ export function useUnreadCounts() {
     return () => clearInterval(interval);
   }, [refresh]);
 
-  // Compute total
+  // 计算总数
   let totalUnread = 0;
   for (const conv of conversations.values()) {
     totalUnread += conv.unread;

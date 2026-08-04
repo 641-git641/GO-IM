@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-// TestNewLogicClientEmptyAddr returns nil (gRPC disabled).
+// TestNewLogicClientEmptyAddr 返回 nil（gRPC 已禁用）。
 func TestNewLogicClientEmptyAddr(t *testing.T) {
 	lc, err := NewLogicClient("")
 	if err != nil {
@@ -15,9 +15,9 @@ func TestNewLogicClientEmptyAddr(t *testing.T) {
 	}
 }
 
-// TestNewLogicClientInvalidAddr returns an error for an unreachable address.
+// TestNewLogicClientInvalidAddr 对不可达地址返回错误。
 func TestNewLogicClientInvalidAddr(t *testing.T) {
-	// With grpc.WithBlock(), DialContext will fail for an unreachable address.
+	// 使用 grpc.WithBlock() 时，DialContext 对不可达地址会失败。
 	lc, err := NewLogicClient("localhost:19999")
 	if err == nil {
 		if lc != nil {

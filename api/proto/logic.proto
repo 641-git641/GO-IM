@@ -5,159 +5,159 @@ option go_package = "github.com/im/api/proto;proto";
 
 import "message.proto";
 
-// HistoryRequest is sent by a client to query conversation history.
+// HistoryRequest 由客户端发送，用于查询会话历史记录。
 message HistoryRequest {
-    string uid     = 1; // requester UID
-    string peer    = 2; // conversation peer UID
-    int64  before  = 3; // fetch messages before this timestamp (ms), 0 = now
-    int32  limit   = 4; // max number of messages, 0 = default (30)
+    string uid     = 1; // 请求者 UID
+    string peer    = 2; // 会话对端 UID
+    int64  before  = 3; // 获取早于该时间戳（毫秒）的消息，0 = 当前时间
+    int32  limit   = 4; // 最大消息条数，0 = 默认值（30）
 }
 
-// HistoryResponse returns conversation history messages and a count.
+// HistoryResponse 返回会话历史消息及数量。
 message HistoryResponse {
     repeated Message messages = 1;
-    int32  delivered          = 2; // number of messages actually returned
+    int32  delivered          = 2; // 实际返回的消息条数
 }
 
-// UserRequest is sent to query a user by UID.
+// UserRequest 用于按 UID 查询用户。
 message UserRequest {
     string uid = 1;
 }
 
-// UserResponse returns user information.
+// UserResponse 返回用户信息。
 message UserResponse {
     string uid      = 1;
     string username = 2;
-    bool   found    = 3; // false if user does not exist
+    bool   found    = 3; // 用户不存在时为 false
 }
 
-// SearchRequest is sent to perform a fulltext search on messages.
+// SearchRequest 用于对消息执行全文搜索。
 message SearchRequest {
-    string uid      = 1;  // searching user (access control — must be participant)
-    string query    = 2;  // search terms
-    string peer     = 3;  // optional: scope to one conversation
-    int32  chat_type = 4; // optional filter: 0=all, 1=single, 2=group
-    int32  msg_type  = 5; // optional filter: 0=all
-    int64  before   = 6;  // optional: max timestamp (ms)
-    int64  after    = 7;  // optional: min timestamp (ms)
-    int32  limit    = 8;  // max results, default 20, max 50
-    int64  cursor   = 9;  // keyset pagination: msg_id of last result
+    string uid      = 1;  // 搜索用户（访问控制 —— 必须是参与者）
+    string query    = 2;  // 搜索词
+    string peer     = 3;  // 可选：限定到单个会话
+    int32  chat_type = 4; // 可选过滤：0=全部，1=单聊，2=群聊
+    int32  msg_type  = 5; // 可选过滤：0=全部
+    int64  before   = 6;  // 可选：最大时间戳（毫秒）
+    int64  after    = 7;  // 可选：最小时间戳（毫秒）
+    int32  limit    = 8;  // 最大结果数，默认 20，最大 50
+    int64  cursor   = 9;  // 键集分页：最后一条结果的 msg_id
 }
 
-// SearchResponse returns fulltext search results.
+// SearchResponse 返回全文搜索结果。
 message SearchResponse {
     repeated Message messages   = 1;
-    int32  count                = 2; // number of results in this page
-    int64  next_cursor          = 3; // 0 = no more pages
+    int32  count                = 2; // 本页结果数量
+    int64  next_cursor          = 3; // 0 = 没有更多页
 }
 
-// GroupInfo represents a chat group's metadata and member list.
+// GroupInfo 表示聊天群组的元数据与成员列表。
 message GroupInfo {
-    string id         = 1; // e.g. "g_123456"
-    string name       = 2; // human-readable group name
-    string owner_uid  = 3; // creator/owner
-    repeated string members = 4; // member UIDs
-    int64  created_at = 5; // unix millis
+    string id         = 1; // 例如 "g_123456"
+    string name       = 2; // 人类可读的群组名称
+    string owner_uid  = 3; // 创建者/群主
+    repeated string members = 4; // 成员 UID 列表
+    int64  created_at = 5; // 毫秒级 Unix 时间戳
 }
 
-// CreateGroupRequest is sent to create a new group.
+// CreateGroupRequest 用于创建新群组。
 message CreateGroupRequest {
     string name       = 1;
     string owner_uid  = 2;
 }
 
-// CreateGroupResponse returns the newly created group.
+// CreateGroupResponse 返回新创建的群组。
 message CreateGroupResponse {
     GroupInfo group = 1;
-    string error    = 2; // empty on success
+    string error    = 2; // 成功时为空
 }
 
-// JoinGroupRequest is sent to add a user to a group.
+// JoinGroupRequest 用于将用户添加到群组。
 message JoinGroupRequest {
     string group_id = 1;
     string uid      = 2;
 }
 
-// JoinGroupResponse confirms membership.
+// JoinGroupResponse 确认成员身份。
 message JoinGroupResponse {
     bool   ok    = 1;
-    string error = 2; // reason on failure
+    string error = 2; // 失败原因
 }
 
-// LeaveGroupRequest is sent to remove a user from a group.
+// LeaveGroupRequest 用于将用户从群组中移除。
 message LeaveGroupRequest {
     string group_id = 1;
     string uid      = 2;
 }
 
-// LeaveGroupResponse confirms departure.
+// LeaveGroupResponse 确认退出。
 message LeaveGroupResponse {
     bool   ok      = 1;
-    bool   deleted = 2; // true if group was deleted (last member left)
-    string error   = 3; // reason on failure
+    bool   deleted = 2; // 群组被删除（最后一名成员退出）时为 true
+    string error   = 3; // 失败原因
 }
 
-// GetGroupRequest is sent to query group details.
+// GetGroupRequest 用于查询群组详情。
 message GetGroupRequest {
     string group_id = 1;
 }
 
-// GetGroupResponse returns group info if found.
+// GetGroupResponse 在找到时返回群组信息。
 message GetGroupResponse {
     GroupInfo group = 1;
     bool      found = 2;
 }
 
-// ListGroupsRequest is sent to list groups for a user.
+// ListGroupsRequest 用于列出用户的群组。
 message ListGroupsRequest {
     string uid = 1;
 }
 
-// ListGroupsResponse returns the groups the user belongs to.
+// ListGroupsResponse 返回用户所属的群组。
 message ListGroupsResponse {
     repeated GroupInfo groups = 1;
 }
 
-// UnreadCount represents the number of unread messages for a conversation.
+// UnreadCount 表示某个会话的未读消息数量。
 message UnreadCount {
-    string peer  = 1; // conversation peer UID or group ID
-    int64  count = 2; // number of unread messages
+    string peer  = 1; // 会话对端 UID 或群组 ID
+    int64  count = 2; // 未读消息数量
 }
 
-// IncrementUnreadRequest is sent to increment the unread count for a conversation.
+// IncrementUnreadRequest 用于增加某个会话的未读计数。
 message IncrementUnreadRequest {
-    string uid  = 1; // user whose unread count to increment (receiver)
-    string peer = 2; // sender UID or group ID
+    string uid  = 1; // 需要增加未读计数的用户（接收者）
+    string peer = 2; // 发送者 UID 或群组 ID
 }
 
-// IncrementUnreadResponse returns the new count.
+// IncrementUnreadResponse 返回新的计数。
 message IncrementUnreadResponse {
     int64 new_count = 1;
 }
 
-// MarkReadRequest is sent to mark a conversation as read.
+// MarkReadRequest 用于将会话标记为已读。
 message MarkReadRequest {
-    string reader = 1; // user who read the messages
-    string peer   = 2; // conversation peer or group
+    string reader = 1; // 已读消息的用户
+    string peer   = 2; // 会话对端或群组
 }
 
-// MarkReadResponse confirms the operation.
+// MarkReadResponse 确认操作完成。
 message MarkReadResponse {
     bool ok = 1;
 }
 
-// GetUnreadCountsRequest is sent to fetch all unread counts for a user.
+// GetUnreadCountsRequest 用于获取用户的全部未读计数。
 message GetUnreadCountsRequest {
     string uid = 1;
 }
 
-// GetUnreadCountsResponse returns per-conversation unread counts.
+// GetUnreadCountsResponse 返回每个会话的未读计数。
 message GetUnreadCountsResponse {
     repeated UnreadCount counts = 1;
 }
 
-// Logic provides synchronous RPCs that the Gateway calls when it needs
-// to query persistent state (history, users, search, groups, unread) from the Logic/Storage layer.
+// Logic 提供同步 RPC，Gateway 需要从 Logic/存储层查询持久化状态
+// （历史记录、用户、搜索、群组、未读）时调用。
 service Logic {
     rpc QueryHistory(HistoryRequest) returns (HistoryResponse);
     rpc GetUser(UserRequest) returns (UserResponse);

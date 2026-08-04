@@ -1,11 +1,11 @@
-// Logic service — consumes messages from Kafka, persists to MySQL,
-// and serves gRPC queries (history, user lookup) for the Gateway.
+// Logic 服务 —— 从 Kafka 消费消息并持久化到 MySQL，
+// 同时为 Gateway 提供 gRPC 查询（历史记录、用户查找）。
 //
-// Usage:
+// 用法：
 //
 //	go run ./cmd/logic/
 //
-// Requires MySQL (docker-compose up -d) and optionally Kafka.
+// 需要 MySQL（docker-compose up -d），可选 Kafka。
 package main
 
 import (
@@ -35,10 +35,10 @@ func main() {
 		log.Fatalf("[logic] load config: %v", err)
 	}
 
-	// --- MySQL (required for Logic service) ---
-	// Use logic.mysql config if set, otherwise fall back to gateway.mysql.
-	// Only fall back when DSN is empty, not simply because Enabled is false —
-	// a config with Enabled=true but empty DSN is a config error, not a fallback signal.
+	// --- MySQL（Logic 服务必需）---
+	// 如果设置了 logic.mysql 配置则使用它，否则回退到 gateway.mysql。
+	// 仅在 DSN 为空时回退，而不是因为 Enabled 为 false —
+	// Enabled=true 但 DSN 为空的配置属于配置错误，而不是回退信号。
 	mySQLCfg := cfg.Logic.MySQL
 	if mySQLCfg.DSN == "" {
 		mySQLCfg = cfg.Gateway.MySQL
@@ -54,13 +54,13 @@ func main() {
 	defer mysqlStore.Close()
 	log.Printf("[logic] MySQL connected")
 
-	// --- gRPC server ---
+	// --- gRPC 服务器 ---
 	grpcAddr := cfg.Logic.ListenAddr
 	if grpcAddr == "" {
 		grpcAddr = cfg.Gateway.LogicGateway.ListenAddr
 	}
 	if grpcAddr == "" {
-		grpcAddr = ":50051" // default Logic gRPC port
+		grpcAddr = ":50051" // 默认的 Logic gRPC 端口
 	}
 	lis, err := net.Listen("tcp", grpcAddr)
 	if err != nil {
@@ -70,10 +70,10 @@ func main() {
 	grpcServer := grpc.NewServer()
 	logicSrv := logic.NewServer(mysqlStore, cfg.Logic.WorkerID)
 	proto.RegisterLogicServer(grpcServer, logicSrv)
-	reflection.Register(grpcServer) // enables grpcurl for debugging
+	reflection.Register(grpcServer) // 启用 grpcurl 便于调试
 	log.Printf("[logic] gRPC server listening on %s", grpcAddr)
 
-	// Channel to surface fatal gRPC serve errors without bypassing deferred cleanup.
+	// 用于暴露 gRPC 致命错误而不绕过延迟清理的通道。
 	gRPCDone := make(chan error, 1)
 	go func() {
 		if err := grpcServer.Serve(lis); err != nil {
@@ -81,12 +81,12 @@ func main() {
 		}
 	}()
 
-	// --- Kafka consumer (optional) ---
+	// --- Kafka 消费者（可选）---
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Use logic.kafka config if set, otherwise fall back to gateway.kafka.
-	// Only fall back when Brokers is empty — Enabled=false with valid Brokers should still work.
+	// 如果设置了 logic.kafka 配置则使用它，否则回退到 gateway.kafka。
+	// 仅在 Brokers 为空时回退 —— Enabled=false 但 Brokers 有效时仍应工作。
 	kafkaCfg := cfg.Logic.Kafka
 	if len(kafkaCfg.Brokers) == 0 {
 		kafkaCfg = cfg.Gateway.Kafka
@@ -111,12 +111,12 @@ func main() {
 		log.Printf("[logic] Kafka disabled (kafka.enabled=false), consumer not started")
 	}
 
-	// --- Graceful shutdown ---
-	// Block on signal or fatal gRPC error, then perform ordered shutdown:
-	//   1. GracefulStop gRPC → stop accepting RPCs, drain in-flight requests
-	//   2. Cancel context → consumer Run loop exits (flushes buffer)
-	//   3. Wait for consumer → all buffered messages flushed to MySQL
-	//   4. Close consumer → release Kafka reader
+	// --- 优雅关闭 ---
+	// 阻塞等待信号或致命的 gRPC 错误，然后按顺序关闭：
+	//   1. GracefulStop gRPC → 停止接受 RPC，排空进行中的请求
+	//   2. 取消 context → 消费者 Run 循环退出（刷新缓冲区）
+	//   3. 等待消费者 → 所有缓冲消息刷入 MySQL
+	//   4. 关闭消费者 → 释放 Kafka 读取器
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
@@ -126,16 +126,16 @@ func main() {
 	case err := <-gRPCDone:
 		log.Printf("[logic] gRPC serve fatal error: %v — shutting down...", err)
 	}
-	// Note: we intentionally do NOT use log.Fatalf here so that deferred
-	// cleanup (mysqlStore.Close()) runs via main's deferred calls.
+	// 注意：这里故意不使用 log.Fatalf，以便延迟清理
+	// （mysqlStore.Close()）能通过 main 的延迟调用执行。
 
-	// 1. Stop the gRPC server first so no new RPCs arrive while consumer drains.
+	// 1. 先停止 gRPC 服务器，确保消费者排空期间没有新的 RPC 到达。
 	grpcServer.GracefulStop()
 
-	// 2. Stop the Kafka consumer loop (triggers final flush).
+	// 2. 停止 Kafka 消费者循环（触发最终刷新）。
 	cancel()
 
-	// 3. Wait for consumer to finish flushing, then close.
+	// 3. 等待消费者完成刷新后关闭。
 	if consumer != nil {
 		consumer.Wait()
 		consumer.Close()

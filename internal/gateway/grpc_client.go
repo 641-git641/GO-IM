@@ -12,16 +12,16 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-// LogicClient wraps the gRPC client for the Logic service.
-// It provides synchronous query methods (history, user lookup)
-// that transparently call the remote Logic service.
+// LogicClient 封装指向 Logic 服务的 gRPC 客户端。
+// 它提供同步查询方法(历史记录、用户查询),
+// 这些方法透明地调用远程 Logic 服务。
 type LogicClient struct {
 	conn   *grpc.ClientConn
 	client proto.LogicClient
 }
 
-// NewLogicClient dials the Logic gRPC server and returns a client.
-// Returns nil if addr is empty (gRPC disabled).
+// NewLogicClient 拨号 Logic gRPC 服务器并返回客户端。
+// 如果 addr 为空(gRPC 禁用)则返回 nil。
 func NewLogicClient(addr string) (*LogicClient, error) {
 	if addr == "" {
 		return nil, nil
@@ -44,8 +44,8 @@ func NewLogicClient(addr string) (*LogicClient, error) {
 	return &LogicClient{conn: conn, client: client}, nil
 }
 
-// QueryHistory returns paginated conversation history from the Logic service.
-// Returns nil, nil if the client is nil (gRPC disabled).
+// QueryHistory 从 Logic 服务返回分页的会话历史记录。
+// 如果客户端为 nil(gRPC 禁用)则返回 nil, nil。
 func (c *LogicClient) QueryHistory(ctx context.Context, uid, peer string, before int64, limit int) ([]*proto.Message, error) {
 	if c == nil {
 		return nil, nil
@@ -66,17 +66,17 @@ func (c *LogicClient) QueryHistory(ctx context.Context, uid, peer string, before
 	return resp.Messages, nil
 }
 
-// QueryGroupHistory returns paginated group history from the Logic service.
-// Returns nil, nil if the client is nil (gRPC disabled).
+// QueryGroupHistory 从 Logic 服务返回分页的群聊历史记录。
+// 如果客户端为 nil(gRPC 禁用)则返回 nil, nil。
 func (c *LogicClient) QueryGroupHistory(ctx context.Context, groupID string, before int64, limit int) ([]*proto.Message, error) {
 	if c == nil {
 		return nil, nil
 	}
 
-	// Reuse HistoryRequest — "peer" field carries the group ID when ChatTypeGroup is used.
-	// The Logic service distinguishes group history by the ChatType field on stored messages.
+	// 复用 HistoryRequest —— 使用 ChatTypeGroup 时 "peer" 字段携带群 ID。
+	// Logic 服务通过已存消息上的 ChatType 字段区分群聊历史。
 	req := &proto.HistoryRequest{
-		Uid:    groupID, // group ID as the conversation identifier
+		Uid:    groupID, // 群 ID 作为会话标识符
 		Peer:   "",
 		Before: before,
 		Limit:  int32(limit),
@@ -90,8 +90,8 @@ func (c *LogicClient) QueryGroupHistory(ctx context.Context, groupID string, bef
 	return resp.Messages, nil
 }
 
-// SearchMessages performs a fulltext search via the Logic service.
-// Returns nil, nil if the client is nil (gRPC disabled).
+// SearchMessages 通过 Logic 服务执行全文搜索。
+// 如果客户端为 nil(gRPC 禁用)则返回 nil, nil。
 func (c *LogicClient) SearchMessages(ctx context.Context, params *repo.SearchParams) (*repo.SearchResult, error) {
 	if c == nil {
 		return nil, nil
@@ -121,8 +121,8 @@ func (c *LogicClient) SearchMessages(ctx context.Context, params *repo.SearchPar
 	}, nil
 }
 
-// GetUser looks up a user by UID via the Logic service.
-// Returns nil, nil if the client is nil (gRPC disabled).
+// GetUser 通过 Logic 服务按 UID 查询用户。
+// 如果客户端为 nil(gRPC 禁用)则返回 nil, nil。
 func (c *LogicClient) GetUser(ctx context.Context, uid string) (*repo.User, error) {
 	if c == nil {
 		return nil, nil
@@ -141,10 +141,10 @@ func (c *LogicClient) GetUser(ctx context.Context, uid string) (*repo.User, erro
 	}, nil
 }
 
-// ---------- Group RPCs ----------
+// ---------- 群相关 RPC ----------
 
-// CreateGroupClient creates a new group via the Logic service.
-// Returns nil, nil if the client is nil (gRPC disabled).
+// CreateGroupClient 通过 Logic 服务创建新群。
+// 如果客户端为 nil(gRPC 禁用)则返回 nil, nil。
 func (c *LogicClient) CreateGroupClient(ctx context.Context, name, ownerUID string) (*proto.GroupInfo, error) {
 	if c == nil {
 		return nil, nil
@@ -159,8 +159,8 @@ func (c *LogicClient) CreateGroupClient(ctx context.Context, name, ownerUID stri
 	return resp.Group, nil
 }
 
-// JoinGroupClient adds a user to a group via the Logic service.
-// Returns an error string (empty = success), or nil if gRPC disabled.
+// JoinGroupClient 通过 Logic 服务将用户加入群。
+// 返回错误字符串(空串 = 成功),gRPC 禁用时返回 nil。
 func (c *LogicClient) JoinGroupClient(ctx context.Context, groupID, uid string) error {
 	if c == nil {
 		return nil
@@ -175,8 +175,8 @@ func (c *LogicClient) JoinGroupClient(ctx context.Context, groupID, uid string) 
 	return nil
 }
 
-// LeaveGroupClient removes a user from a group via the Logic service.
-// Returns whether the group was deleted, or nil if gRPC disabled.
+// LeaveGroupClient 通过 Logic 服务将用户移出群。
+// 返回群是否已被删除,gRPC 禁用时返回 nil。
 func (c *LogicClient) LeaveGroupClient(ctx context.Context, groupID, uid string) (deleted bool, err error) {
 	if c == nil {
 		return false, nil
@@ -191,8 +191,8 @@ func (c *LogicClient) LeaveGroupClient(ctx context.Context, groupID, uid string)
 	return resp.Deleted, nil
 }
 
-// GetGroupClient returns group info with members via the Logic service.
-// Returns nil, nil if not found or gRPC disabled.
+// GetGroupClient 通过 Logic 服务返回群信息(含成员)。
+// 未找到或 gRPC 禁用时返回 nil, nil。
 func (c *LogicClient) GetGroupClient(ctx context.Context, groupID string) (*proto.GroupInfo, error) {
 	if c == nil {
 		return nil, nil
@@ -207,8 +207,8 @@ func (c *LogicClient) GetGroupClient(ctx context.Context, groupID string) (*prot
 	return resp.Group, nil
 }
 
-// ListGroupsClient returns the groups a user belongs to via the Logic service.
-// Returns nil, nil if gRPC disabled.
+// ListGroupsClient 通过 Logic 服务返回用户所属的群列表。
+// gRPC 禁用时返回 nil, nil。
 func (c *LogicClient) ListGroupsClient(ctx context.Context, uid string) ([]*proto.GroupInfo, error) {
 	if c == nil {
 		return nil, nil
@@ -220,10 +220,10 @@ func (c *LogicClient) ListGroupsClient(ctx context.Context, uid string) ([]*prot
 	return resp.Groups, nil
 }
 
-// ---------- Unread RPCs ----------
+// ---------- 未读相关 RPC ----------
 
-// IncrementUnreadClient increments the unread count for (uid, peer) via the Logic service.
-// Returns the new count, or 0 if gRPC disabled.
+// IncrementUnreadClient 通过 Logic 服务增加 (uid, peer) 的未读计数。
+// 返回新的计数,gRPC 禁用时返回 0。
 func (c *LogicClient) IncrementUnreadClient(ctx context.Context, uid, peer string) (int64, error) {
 	if c == nil {
 		return 0, nil
@@ -235,8 +235,8 @@ func (c *LogicClient) IncrementUnreadClient(ctx context.Context, uid, peer strin
 	return resp.NewCount, nil
 }
 
-// MarkReadClient clears the unread count for (reader, peer) via the Logic service.
-// Returns nil if gRPC disabled.
+// MarkReadClient 通过 Logic 服务清除 (reader, peer) 的未读计数。
+// gRPC 禁用时返回 nil。
 func (c *LogicClient) MarkReadClient(ctx context.Context, reader, peer string) error {
 	if c == nil {
 		return nil
@@ -251,8 +251,8 @@ func (c *LogicClient) MarkReadClient(ctx context.Context, reader, peer string) e
 	return nil
 }
 
-// GetUnreadCountsClient returns all unread counts for a user via the Logic service.
-// Returns nil, nil if gRPC disabled.
+// GetUnreadCountsClient 通过 Logic 服务返回用户的所有未读计数。
+// gRPC 禁用时返回 nil, nil。
 func (c *LogicClient) GetUnreadCountsClient(ctx context.Context, uid string) (map[string]int64, error) {
 	if c == nil {
 		return nil, nil
@@ -268,7 +268,7 @@ func (c *LogicClient) GetUnreadCountsClient(ctx context.Context, uid string) (ma
 	return counts, nil
 }
 
-// Close shuts down the gRPC connection.
+// Close 关闭 gRPC 连接。
 func (c *LogicClient) Close() error {
 	if c.conn != nil {
 		return c.conn.Close()

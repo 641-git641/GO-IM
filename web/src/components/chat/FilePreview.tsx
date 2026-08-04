@@ -20,7 +20,7 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** Full-screen image lightbox */
+/** 全屏图片灯箱 */
 function ImageLightbox({
   src,
   alt,
@@ -44,7 +44,7 @@ function ImageLightbox({
       className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
       onClick={onClose}
     >
-      {/* Toolbar */}
+      {/* 工具栏 */}
       <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
         <button
           onClick={(e) => { e.stopPropagation(); zoomOut(); }}
@@ -85,10 +85,10 @@ function ImageLightbox({
         </button>
       </div>
 
-      {/* Image name */}
+      {/* 图片名称 */}
       <div className="absolute top-4 left-4 text-white/70 text-sm z-10">{fileName}</div>
 
-      {/* Image */}
+      {/* 图片 */}
       <img
         src={src}
         alt={alt}
@@ -173,7 +173,7 @@ export default function FilePreview({
     );
   }
 
-  // Generic file
+  // 普通文件
   return (
     <a
       href={fullUrl}

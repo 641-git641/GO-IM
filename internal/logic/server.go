@@ -10,27 +10,27 @@ import (
 	"github.com/im/internal/repo"
 )
 
-// Server implements the Logic gRPC service (proto.LogicServer).
-// It provides synchronous query RPCs backed by MySQL.
+// Server 实现 Logic gRPC 服务（proto.LogicServer）。
+// 它提供基于 MySQL 的同步查询 RPC。
 type Server struct {
 	proto.UnimplementedLogicServer
 	mysql       *repo.MySQLStore
-	userRepo    repo.UserStore        // for GetUser
-	groupStore  *repo.MySQLGroupStore  // for Group RPCs
-	unreadStore *repo.MySQLUnreadStore // for Unread RPCs
+	userRepo    repo.UserStore        // 用于 GetUser
+	groupStore  *repo.MySQLGroupStore  // 用于群组 RPC
+	unreadStore *repo.MySQLUnreadStore // 用于未读 RPC
 }
 
-// NewServer creates a Logic gRPC server.
+// NewServer 创建一个 Logic gRPC 服务器。
 func NewServer(mysql *repo.MySQLStore, workerID int64) *Server {
 	s := &Server{
 		mysql:    mysql,
 		userRepo: mysql,
 	}
 	if mysql != nil {
-		// Create a snowflake generator for group IDs. The worker ID should be distinct
-		// from the gateway's worker ID to avoid ID collisions.
+		// 为群组 ID 创建 snowflake 生成器。worker ID 应与
+		// 网关的 worker ID 不同，以避免 ID 冲突。
 		if workerID <= 0 {
-			workerID = 2 // default fallback
+			workerID = 2 // 默认回退值
 		}
 		sf, err := snowflake.New(workerID)
 		if err != nil {
@@ -43,7 +43,7 @@ func NewServer(mysql *repo.MySQLStore, workerID int64) *Server {
 	return s
 }
 
-// QueryHistory returns paginated conversation history between two users.
+// QueryHistory 返回两个用户之间的分页会话历史记录。
 func (s *Server) QueryHistory(ctx context.Context, req *proto.HistoryRequest) (*proto.HistoryResponse, error) {
 	if s.mysql == nil {
 		return &proto.HistoryResponse{Messages: nil, Delivered: 0}, nil
@@ -68,7 +68,7 @@ func (s *Server) QueryHistory(ctx context.Context, req *proto.HistoryRequest) (*
 		return &proto.HistoryResponse{
 			Messages:  nil,
 			Delivered: 0,
-		}, nil // return empty, not gRPC error — client tolerates empty
+		}, nil // 返回空值而非 gRPC 错误 —— 客户端能容忍空值
 	}
 
 	return &proto.HistoryResponse{
@@ -77,7 +77,7 @@ func (s *Server) QueryHistory(ctx context.Context, req *proto.HistoryRequest) (*
 	}, nil
 }
 
-// SearchMessages performs a fulltext search on message content.
+// SearchMessages 对消息内容执行全文搜索。
 func (s *Server) SearchMessages(ctx context.Context, req *proto.SearchRequest) (*proto.SearchResponse, error) {
 	if s.mysql == nil {
 		return &proto.SearchResponse{}, nil
@@ -98,7 +98,7 @@ func (s *Server) SearchMessages(ctx context.Context, req *proto.SearchRequest) (
 	result, err := s.mysql.SearchMessages(ctx, params)
 	if err != nil {
 		log.Printf("[logic] SearchMessages error (uid=%s, q=%q): %v", req.Uid, req.Query, err)
-		return &proto.SearchResponse{}, nil // return empty, not gRPC error — client tolerates empty
+		return &proto.SearchResponse{}, nil // 返回空值而非 gRPC 错误 —— 客户端能容忍空值
 	}
 
 	if result == nil {
@@ -112,7 +112,7 @@ func (s *Server) SearchMessages(ctx context.Context, req *proto.SearchRequest) (
 	}, nil
 }
 
-// ---------- Group RPCs ----------
+// ---------- 群组 RPC ----------
 
 func groupInfoFromRow(g *repo.GroupRow, members []string) *proto.GroupInfo {
 	return &proto.GroupInfo{
@@ -124,13 +124,13 @@ func groupInfoFromRow(g *repo.GroupRow, members []string) *proto.GroupInfo {
 	}
 }
 
-// CreateGroup creates a new group and adds the owner as the first member.
+// CreateGroup 创建一个新群组并将群主添加为第一位成员。
 func (s *Server) CreateGroup(ctx context.Context, req *proto.CreateGroupRequest) (*proto.CreateGroupResponse, error) {
 	if s.groupStore == nil {
 		return &proto.CreateGroupResponse{Error: "group store not available"}, nil
 	}
 
-	g, err := s.groupStore.CreateGroup(ctx, req.Name, req.OwnerUid, nil) // members added by gateway via JoinGroup
+	g, err := s.groupStore.CreateGroup(ctx, req.Name, req.OwnerUid, nil) // 成员由网关通过 JoinGroup 添加
 	if err != nil {
 		log.Printf("[logic] CreateGroup error (%s): %v", req.Name, err)
 		return &proto.CreateGroupResponse{Error: err.Error()}, nil
@@ -140,7 +140,7 @@ func (s *Server) CreateGroup(ctx context.Context, req *proto.CreateGroupRequest)
 	return &proto.CreateGroupResponse{Group: groupInfoFromRow(g, members)}, nil
 }
 
-// JoinGroup adds a user to a group.
+// JoinGroup 将用户添加到群组。
 func (s *Server) JoinGroup(ctx context.Context, req *proto.JoinGroupRequest) (*proto.JoinGroupResponse, error) {
 	if s.groupStore == nil {
 		return &proto.JoinGroupResponse{Ok: false, Error: "group store not available"}, nil
@@ -154,7 +154,7 @@ func (s *Server) JoinGroup(ctx context.Context, req *proto.JoinGroupRequest) (*p
 	return &proto.JoinGroupResponse{Ok: true}, nil
 }
 
-// LeaveGroup removes a user from a group. Deletes the group if empty.
+// LeaveGroup 将用户从群组中移除。如果群组为空则删除。
 func (s *Server) LeaveGroup(ctx context.Context, req *proto.LeaveGroupRequest) (*proto.LeaveGroupResponse, error) {
 	if s.groupStore == nil {
 		return &proto.LeaveGroupResponse{Ok: false, Error: "group store not available"}, nil
@@ -169,7 +169,7 @@ func (s *Server) LeaveGroup(ctx context.Context, req *proto.LeaveGroupRequest) (
 	return &proto.LeaveGroupResponse{Ok: true, Deleted: deleted}, nil
 }
 
-// GetGroup returns group details including members.
+// GetGroup 返回群组详情（包括成员）。
 func (s *Server) GetGroup(ctx context.Context, req *proto.GetGroupRequest) (*proto.GetGroupResponse, error) {
 	if s.groupStore == nil {
 		return &proto.GetGroupResponse{Found: false}, nil
@@ -185,7 +185,7 @@ func (s *Server) GetGroup(ctx context.Context, req *proto.GetGroupRequest) (*pro
 	return &proto.GetGroupResponse{Group: groupInfoFromRow(g, members), Found: true}, nil
 }
 
-// ListGroups returns all groups the user belongs to.
+// ListGroups 返回用户所属的全部群组。
 func (s *Server) ListGroups(ctx context.Context, req *proto.ListGroupsRequest) (*proto.ListGroupsResponse, error) {
 	if s.groupStore == nil {
 		return &proto.ListGroupsResponse{}, nil
@@ -205,7 +205,7 @@ func (s *Server) ListGroups(ctx context.Context, req *proto.ListGroupsRequest) (
 	return &proto.ListGroupsResponse{Groups: out}, nil
 }
 
-// GetUser looks up a user by UID.
+// GetUser 按 UID 查找用户。
 func (s *Server) GetUser(ctx context.Context, req *proto.UserRequest) (*proto.UserResponse, error) {
 	if s.userRepo == nil {
 		return &proto.UserResponse{Found: false}, nil
@@ -227,9 +227,9 @@ func (s *Server) GetUser(ctx context.Context, req *proto.UserRequest) (*proto.Us
 	}, nil
 }
 
-// ---------- Unread RPCs ----------
+// ---------- 未读 RPC ----------
 
-// IncrementUnread increments the unread count for (uid, peer) and returns the new count.
+// IncrementUnread 增加 (uid, peer) 的未读计数并返回新计数。
 func (s *Server) IncrementUnread(ctx context.Context, req *proto.IncrementUnreadRequest) (*proto.IncrementUnreadResponse, error) {
 	if s.unreadStore == nil {
 		return &proto.IncrementUnreadResponse{}, nil
@@ -242,7 +242,7 @@ func (s *Server) IncrementUnread(ctx context.Context, req *proto.IncrementUnread
 	return &proto.IncrementUnreadResponse{NewCount: count}, nil
 }
 
-// MarkRead clears the unread count for (reader, peer).
+// MarkRead 清除 (reader, peer) 的未读计数。
 func (s *Server) MarkRead(ctx context.Context, req *proto.MarkReadRequest) (*proto.MarkReadResponse, error) {
 	if s.unreadStore == nil {
 		return &proto.MarkReadResponse{Ok: false}, nil
@@ -254,7 +254,7 @@ func (s *Server) MarkRead(ctx context.Context, req *proto.MarkReadRequest) (*pro
 	return &proto.MarkReadResponse{Ok: true}, nil
 }
 
-// GetUnreadCounts returns all unread counts for a user.
+// GetUnreadCounts 返回一个用户的全部未读计数。
 func (s *Server) GetUnreadCounts(ctx context.Context, req *proto.GetUnreadCountsRequest) (*proto.GetUnreadCountsResponse, error) {
 	if s.unreadStore == nil {
 		return &proto.GetUnreadCountsResponse{}, nil

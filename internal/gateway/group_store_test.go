@@ -40,7 +40,7 @@ func TestGroupStoreCreate(t *testing.T) {
 		t.Errorf("expected 1 member, got %d", len(g.Members))
 	}
 
-	// Verify group is retrievable.
+	// 验证群组可被获取。
 	got, err := gs.Get(ctx, g.ID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
@@ -147,7 +147,7 @@ func TestGroupStoreRemoveLastMemberDeletesGroup(t *testing.T) {
 		t.Fatalf("RemoveMember alice: %v", err)
 	}
 
-	// Group should be deleted since it has no members.
+	// 群组应因没有成员而被删除。
 	if _, err := gs.Get(ctx, g.ID); err != ErrGroupNotFound {
 		t.Errorf("expected ErrGroupNotFound after last member leaves, got %v", err)
 	}
@@ -168,7 +168,7 @@ func TestGroupStoreGetUserGroups(t *testing.T) {
 
 	g1, _ := gs.Create(ctx, "Team A", "alice", nil)
 	g2, _ := gs.Create(ctx, "Team B", "bob", nil)
-	gs.AddMember(ctx, g2.ID, "alice") // alice joins Team B
+	gs.AddMember(ctx, g2.ID, "alice") // alice 加入 Team B
 
 	groups, err := gs.GetUserGroups(ctx, "alice")
 	if err != nil {
@@ -188,13 +188,13 @@ func TestGroupStoreGetUserGroups(t *testing.T) {
 		t.Errorf("carol should be in 0 groups, got %d", len(groups))
 	}
 
-	// Verify group names in results.
+	// 验证结果中的群组名称。
 	names := make(map[string]bool)
 	for _, g := range groups {
 		names[g.Name] = true
 	}
-	_ = g1 // used
-	_ = g2 // used
+	_ = g1 // 已使用
+	_ = g2 // 已使用
 }
 
 func TestGroupStoreIsMemberGroupNotFound(t *testing.T) {

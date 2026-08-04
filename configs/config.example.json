@@ -1,6 +1,6 @@
 {
-    "_comment": "IM Gateway config example. Copy to config.json and modify.",
-    "_docker_comment": "When running inside Docker Compose, use Docker DNS names: redis→redis:6379, mysql→mysql:3306, kafka→kafka:9092, minio→minio:9000, logic→logic:50051",
+    "_comment": "IM Gateway 配置示例。复制为 config.json 后按需修改。",
+    "_docker_comment": "在 Docker Compose 内运行时，使用 Docker DNS 名称：redis→redis:6379、mysql→mysql:3306、kafka→kafka:9092、minio→minio:9000、logic→logic:50051",
 
     "gateway": {
         "http_addr": ":8080",
@@ -57,14 +57,14 @@
         },
 
         "grpc": {
-            "_comment": "Multi-gateway mode: set addr (this Gateway's gRPC listen port), node_id, and peer_addrs. Leave addr empty for single-node mode.",
+            "_comment": "多网关模式：设置 addr（本 Gateway 的 gRPC 监听端口）、node_id 和 peer_addrs。单节点模式时 addr 留空。",
             "addr": "",
             "node_id": "",
             "peer_addrs": {},
             "forward_dial_timeout": "3s",
             "forward_rpc_timeout": "2s",
             "discovery": {
-                "_comment": "Service discovery mode: 'static' (default, uses peer_addrs) or 'redis' (Redis-based auto-discovery with TTL heartbeat).",
+                "_comment": "服务发现模式：'static'（默认，使用 peer_addrs）或 'redis'（基于 Redis 的自动发现，带 TTL 心跳）。",
                 "mode": "static",
                 "redis_key": "im:gateway:node:",
                 "ttl": "15s",
@@ -73,7 +73,7 @@
         },
 
         "object_storage": {
-            "_comment": "MinIO/S3 object storage for file/image messages. enabled=false uses in-memory fallback.",
+            "_comment": "用于文件/图片消息的 MinIO/S3 对象存储。enabled=false 时使用内存回退方案。",
             "enabled": false,
             "endpoint": "localhost:9000",
             "access_key": "minioadmin",
@@ -83,7 +83,7 @@
             "max_upload": 10485760
         },
 
-        "_tunables_comment": "Operational tunables — previously hardcoded, now configurable. Remove to use defaults.",
+        "_tunables_comment": "运行时调优参数 —— 之前为硬编码，现改为可配置。删除后使用默认值。",
         "recall_window_ms": 120000,
         "history_default_limit": 30,
         "search_default_limit": 20,
@@ -92,7 +92,7 @@
     },
 
     "logic": {
-        "_comment": "Logic service gRPC endpoint (used by Gateway) and server settings.",
+        "_comment": "Logic 服务 gRPC 端点（供 Gateway 使用）及服务端设置。",
         "addr": "",
         "listen_addr": "",
         "worker_id": 2,
@@ -101,7 +101,7 @@
     },
 
     "stability": {
-        "_comment": "Operational stability settings.",
+        "_comment": "运行稳定性设置。",
         "max_connections": 0,
         "http_read_timeout": "10s",
         "http_write_timeout": "10s",

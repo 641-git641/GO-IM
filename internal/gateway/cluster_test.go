@@ -13,7 +13,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// GrpcForwarder AddPeer / RemovePeer tests
+// GrpcForwarder AddPeer / RemovePeer 测试
 // ---------------------------------------------------------------------------
 
 func TestGrpcForwarderAddPeer(t *testing.T) {
@@ -36,7 +36,7 @@ func TestGrpcForwarderAddPeerOverwrite(t *testing.T) {
 		"gw-2": "localhost:50051",
 	}, 0, 0)
 
-	// Overwrite existing peer with new address.
+	// 用新地址覆盖现有对端。
 	f.AddPeer("gw-2", "localhost:50052")
 
 	peers := f.PeerAddrs()
@@ -69,7 +69,7 @@ func TestGrpcForwarderRemovePeerNonExistent(t *testing.T) {
 		"gw-2": "localhost:50051",
 	}, 0, 0)
 
-	// Should not panic.
+	// 不应 panic。
 	f.RemovePeer("gw-nonexistent")
 
 	peers := f.PeerAddrs()
@@ -79,7 +79,7 @@ func TestGrpcForwarderRemovePeerNonExistent(t *testing.T) {
 }
 
 func TestGrpcForwarderRemovePeerClosesConnection(t *testing.T) {
-	// Set up an in-process gRPC server so we get a real connection.
+	// 设置进程内 gRPC 服务器，以获得真实连接。
 	lis := bufconn.Listen(1024 * 1024)
 	srv := grpc.NewServer()
 	handler := NewGrpcGatewayServer(NewHub(100), NewHub(100), "test-gw")
@@ -92,22 +92,22 @@ func TestGrpcForwarderRemovePeerClosesConnection(t *testing.T) {
 		"gw-2": "bufnet",
 	}, 0, 0)
 
-	// Force a connection by getting the client.
+	// 通过获取客户端强制建立连接。
 	client, err := f.getOrDial("gw-2")
 	if err != nil {
-		// Can't dial bufconn from inside getOrDial — that's expected in unit test.
-		// Skip this assertion; we'll test connection close via the peerAddrs map.
+		// 无法从 getOrDial 内部拨号 bufconn —— 这在单元测试中是预期的。
+		// 跳过此断言；我们将通过 peerAddrs map 测试连接关闭。
 		_ = client
 	}
 
-	// Before remove, gw-2 is in the map.
+	// 移除前，gw-2 在 map 中。
 	if _, ok := f.PeerAddrs()["gw-2"]; !ok {
 		t.Fatal("gw-2 should exist before remove")
 	}
 
 	f.RemovePeer("gw-2")
 
-	// After remove, gw-2 is gone.
+	// 移除后，gw-2 已消失。
 	if _, ok := f.PeerAddrs()["gw-2"]; ok {
 		t.Error("gw-2 should be removed from peerAddrs")
 	}
@@ -123,7 +123,7 @@ func TestGrpcForwarderPeerAddrsIsCopy(t *testing.T) {
 	}, 0, 0)
 
 	peers := f.PeerAddrs()
-	peers["gw-3"] = "localhost:50052" // mutate the copy
+	peers["gw-3"] = "localhost:50052" // 修改副本
 
 	original := f.PeerAddrs()
 	if _, ok := original["gw-3"]; ok {
@@ -132,12 +132,12 @@ func TestGrpcForwarderPeerAddrsIsCopy(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// ClusterManager addPeer / removePeer tests
+// ClusterManager addPeer / removePeer 测试
 // ---------------------------------------------------------------------------
 
 func TestClusterManagerAddPeerUpdatesHashRing(t *testing.T) {
 	hr := NewHashRing(150)
-	hr.Add("gw-1") // self
+	hr.Add("gw-1") // 自身
 
 	f := NewGrpcForwarder(hr, "gw-1", nil, 0, 0)
 	cm := NewClusterManager(hr, f, ClusterConfig{
@@ -147,7 +147,7 @@ func TestClusterManagerAddPeerUpdatesHashRing(t *testing.T) {
 
 	cm.addPeer("gw-2", ":50051")
 
-	// Hash ring should now contain gw-2.
+	// 哈希环现在应包含 gw-2。
 	if hr.Get("some-key") == "" {
 		t.Error("hash ring should not be empty after adding peer")
 	}
@@ -155,12 +155,12 @@ func TestClusterManagerAddPeerUpdatesHashRing(t *testing.T) {
 		t.Errorf("expected 2 nodes in ring, got %d", hr.Len())
 	}
 
-	// Forwarder should have gw-2.
+	// 转发器应包含 gw-2。
 	if addr := f.PeerAddrs()["gw-2"]; addr != ":50051" {
 		t.Errorf("expected gw-2 addr ':50051', got '%s'", addr)
 	}
 
-	// Peer should be marked healthy.
+	// 对端应被标记为健康。
 	cm.mu.RLock()
 	healthy := cm.peerHealth["gw-2"]
 	cm.mu.RUnlock()
@@ -187,17 +187,17 @@ func TestClusterManagerRemovePeerUpdatesHashRing(t *testing.T) {
 
 	cm.removePeer("gw-2")
 
-	// Hash ring should only have gw-1.
+	// 哈希环应只有 gw-1。
 	if hr.Len() != 1 {
 		t.Errorf("expected 1 node in ring, got %d", hr.Len())
 	}
 
-	// Forwarder should not have gw-2.
+	// 转发器不应包含 gw-2。
 	if _, ok := f.PeerAddrs()["gw-2"]; ok {
 		t.Error("gw-2 should be removed from forwarder")
 	}
 
-	// PeerHealth should not have gw-2.
+	// PeerHealth 不应包含 gw-2。
 	cm.mu.RLock()
 	_, exists := cm.peerHealth["gw-2"]
 	cm.mu.RUnlock()
@@ -225,7 +225,7 @@ func TestClusterManagerHealthyPeers(t *testing.T) {
 		t.Errorf("expected 2 healthy peers, got %d", n)
 	}
 
-	// Mark one unhealthy manually.
+	// 手动将一个对端标记为不健康。
 	cm.mu.Lock()
 	cm.peerHealth["gw-2"] = false
 	cm.mu.Unlock()
@@ -236,7 +236,7 @@ func TestClusterManagerHealthyPeers(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Health check probe tests
+// 健康检查探针测试
 // ---------------------------------------------------------------------------
 
 func TestClusterManagerProbePeerUnreachable(t *testing.T) {
@@ -248,17 +248,17 @@ func TestClusterManagerProbePeerUnreachable(t *testing.T) {
 		ProbeTimeout: 100 * time.Millisecond,
 	})
 
-	// Port 1 is almost certainly not in use — should be unreachable.
-	// Use a random high port with nothing listening.
+	// 端口 1 几乎可以肯定未被使用 —— 应不可达。
+	// 使用一个没有监听的随机高位端口。
 	healthy := cm.probePeer("127.0.0.1:1")
 	if healthy {
 		t.Log("probePeer returned healthy for an unlikely port — port 1 may have something bound")
-		// Not a hard failure — port 1 might be accessible on some systems.
+		// 不算硬性失败 —— 某些系统上端口 1 可能可访问。
 	}
 }
 
 func TestClusterManagerProbePeerReachable(t *testing.T) {
-	// Start a real gRPC server on a dynamic port.
+	// 在动态端口上启动真实的 gRPC 服务器。
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
@@ -286,16 +286,16 @@ func TestClusterManagerProbePeerReachable(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Health check loop tests
+// 健康检查循环测试
 // ---------------------------------------------------------------------------
 
 func TestClusterManagerHealthCheckMarksUnhealthy(t *testing.T) {
 	hr := NewHashRing(150)
-	hr.Add("gw-1") // self
-	hr.Add("gw-2") // peer
+	hr.Add("gw-1") // 自身
+	hr.Add("gw-2") // 对端
 
 	f := NewGrpcForwarder(hr, "gw-1", map[string]string{
-		"gw-2": "127.0.0.1:1", // unreachable
+		"gw-2": "127.0.0.1:1", // 不可达
 	}, 0, 0)
 	cm := NewClusterManager(hr, f, ClusterConfig{
 		ThisNodeID:   "gw-1",
@@ -303,7 +303,7 @@ func TestClusterManagerHealthCheckMarksUnhealthy(t *testing.T) {
 		ProbeTimeout: 50 * time.Millisecond,
 	})
 
-	// Initially gw-2 is in the ring and marked healthy (Start behavior).
+	// 初始时 gw-2 在环中并被标记为健康（Start 的行为）。
 	cm.mu.Lock()
 	cm.peerHealth["gw-2"] = true
 	cm.mu.Unlock()
@@ -312,10 +312,10 @@ func TestClusterManagerHealthCheckMarksUnhealthy(t *testing.T) {
 		t.Fatalf("expected 2 nodes in ring, got %d", hr.Len())
 	}
 
-	// Run one health check cycle.
+	// 运行一个健康检查周期。
 	cm.runHealthCheck()
 
-	// After health check, gw-2 should be removed from the ring.
+	// 健康检查后，gw-2 应从环中移除。
 	if hr.Len() != 1 {
 		t.Errorf("expected 1 node in ring after health check, got %d", hr.Len())
 	}
@@ -329,7 +329,7 @@ func TestClusterManagerHealthCheckMarksUnhealthy(t *testing.T) {
 }
 
 func TestClusterManagerHealthCheckRecovery(t *testing.T) {
-	// Start a real gRPC server.
+	// 启动真实的 gRPC 服务器。
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
@@ -354,7 +354,7 @@ func TestClusterManagerHealthCheckRecovery(t *testing.T) {
 		ProbeTimeout: 500 * time.Millisecond,
 	})
 
-	// Simulate: gw-2 was previously removed (marked unhealthy).
+	// 模拟：gw-2 之前已被移除（标记为不健康）。
 	hr.Remove("gw-2")
 	cm.mu.Lock()
 	cm.peerHealth["gw-2"] = false
@@ -364,7 +364,7 @@ func TestClusterManagerHealthCheckRecovery(t *testing.T) {
 		t.Fatalf("expected 1 node before recovery check, got %d", hr.Len())
 	}
 
-	// Run health check — should detect gw-2 is now reachable and add it back.
+	// 运行健康检查 —— 应检测到 gw-2 现在可达并将其重新加入。
 	cm.runHealthCheck()
 
 	if hr.Len() != 2 {
@@ -381,7 +381,7 @@ func TestClusterManagerHealthCheckRecovery(t *testing.T) {
 
 func TestClusterManagerHealthCheckSkipsSelf(t *testing.T) {
 	hr := NewHashRing(150)
-	hr.Add("gw-1") // self
+	hr.Add("gw-1") // 自身
 
 	f := NewGrpcForwarder(hr, "gw-1", nil, 0, 0)
 	cm := NewClusterManager(hr, f, ClusterConfig{
@@ -390,7 +390,7 @@ func TestClusterManagerHealthCheckSkipsSelf(t *testing.T) {
 		ProbeTimeout: 50 * time.Millisecond,
 	})
 
-	// Should not panic and self should remain healthy.
+	// 不应 panic，自身应保持健康。
 	cm.runHealthCheck()
 
 	if hr.Len() != 1 {
@@ -399,7 +399,7 @@ func TestClusterManagerHealthCheckSkipsSelf(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// reconcilePeers tests
+// reconcilePeers 测试
 // ---------------------------------------------------------------------------
 
 func TestClusterManagerReconcilePeersAddNew(t *testing.T) {
@@ -411,7 +411,7 @@ func TestClusterManagerReconcilePeersAddNew(t *testing.T) {
 		ThisAddr:   ":50050",
 	})
 
-	// Redis reports gw-2 and gw-3.
+	// Redis 报告 gw-2 和 gw-3。
 	cm.reconcilePeers(map[string]string{
 		"gw-2": ":50051",
 		"gw-3": ":50052",
@@ -437,13 +437,13 @@ func TestClusterManagerReconcilePeersSkipsSelf(t *testing.T) {
 		ThisAddr:   ":50050",
 	})
 
-	// Redis reports our own node — should be ignored.
+	// Redis 报告我们自己的节点 —— 应被忽略。
 	cm.reconcilePeers(map[string]string{
 		"gw-1": ":50050",
 		"gw-2": ":50051",
 	})
 
-	// Only gw-2 should be added, not duplicate self.
+	// 只应添加 gw-2，而不重复添加自身。
 	if _, ok := f.PeerAddrs()["gw-1"]; ok {
 		t.Error("self should not appear in forwarder peers")
 	}
@@ -471,7 +471,7 @@ func TestClusterManagerReconcilePeersRemoveStale(t *testing.T) {
 	cm.peerHealth["gw-3"] = true
 	cm.mu.Unlock()
 
-	// Redis only reports gw-2 — gw-3 should be removed.
+	// Redis 只报告 gw-2 —— gw-3 应被移除。
 	cm.reconcilePeers(map[string]string{
 		"gw-2": ":50051",
 	})
@@ -506,7 +506,7 @@ func TestClusterManagerReconcilePeersAddressChanged(t *testing.T) {
 	cm.peerHealth["gw-2"] = true
 	cm.mu.Unlock()
 
-	// Redis reports gw-2 with a new address.
+	// Redis 报告 gw-2 的新地址。
 	cm.reconcilePeers(map[string]string{
 		"gw-2": ":60051",
 	})
@@ -517,7 +517,7 @@ func TestClusterManagerReconcilePeersAddressChanged(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// ClusterManager lifecycle tests
+// ClusterManager 生命周期测试
 // ---------------------------------------------------------------------------
 
 func TestClusterManagerStartStopStatic(t *testing.T) {
@@ -526,7 +526,7 @@ func TestClusterManagerStartStopStatic(t *testing.T) {
 	hr.Add("gw-2")
 
 	f := NewGrpcForwarder(hr, "gw-1", map[string]string{
-		"gw-2": "127.0.0.1:1", // unreachable, but that's fine for lifecycle test
+		"gw-2": "127.0.0.1:1", // 不可达，但对生命周期测试无妨
 	}, 0, 0)
 	cm := NewClusterManager(hr, f, ClusterConfig{
 		ThisNodeID:     "gw-1",
@@ -539,10 +539,10 @@ func TestClusterManagerStartStopStatic(t *testing.T) {
 
 	cm.Start(ctx)
 
-	// Give the health check loop a moment to run.
+	// 给健康检查循环一点运行时间。
 	time.Sleep(100 * time.Millisecond)
 
-	// Verify the background goroutine started (health check loop).
+	// 验证后台 goroutine 已启动（健康检查循环）。
 	cm.mu.RLock()
 	_, exists := cm.peerHealth["gw-2"]
 	cm.mu.RUnlock()
@@ -550,15 +550,15 @@ func TestClusterManagerStartStopStatic(t *testing.T) {
 		t.Error("gw-2 should be tracked in peerHealth after Start")
 	}
 
-	// Stop should clean up without hanging.
+	// Stop 应无挂起地完成清理。
 	cancel()
 	cm.Stop()
 
-	// After Stop, wg is done. This just validates Stop() doesn't deadlock.
+	// Stop 之后 wg 已完成。这只是验证 Stop() 不会死锁。
 }
 
 func TestClusterManagerStartStopConcurrent(t *testing.T) {
-	// Verify Start/Stop is safe to call from multiple goroutines.
+	// 验证从多个 goroutine 调用 Start/Stop 是安全的。
 	hr := NewHashRing(150)
 	hr.Add("gw-1")
 
@@ -578,7 +578,7 @@ func TestClusterManagerStartStopConcurrent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_ = cm.HealthyPeers() // safe concurrent read
+			_ = cm.HealthyPeers() // 安全的并发读取
 		}()
 	}
 	wg.Wait()
@@ -588,7 +588,7 @@ func TestClusterManagerStartStopConcurrent(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Default config values
+// 默认配置值
 // ---------------------------------------------------------------------------
 
 func TestClusterConfigDefaults(t *testing.T) {

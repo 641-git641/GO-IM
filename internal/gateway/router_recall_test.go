@@ -11,16 +11,16 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// CmdRecall — message recall tests
+// CmdRecall —— 消息撤回测试
 // ---------------------------------------------------------------------------
 
-// testMsgStoreForRecall is a MessageStore that records recall calls and
-// stores messages for timestamp verification.
+// testMsgStoreForRecall 是一个 MessageStore，记录撤回调用并
+// 存储消息用于时间戳验证。
 type testMsgStoreForRecall struct {
 	msgs          []*proto.Message
-	recalled      []int64 // msgIDs that were recalled
-	recallErr     error   // return this error from RecallMessage
-	recallFromUID string  // record the fromUID passed to RecallMessage
+	recalled      []int64 // 被撤回的 msgID 列表
+	recallErr     error   // 从 RecallMessage 返回该错误
+	recallFromUID string  // 记录传给 RecallMessage 的 fromUID
 }
 
 func (s *testMsgStoreForRecall) Save(ctx context.Context, msg *proto.Message) error {
@@ -62,8 +62,8 @@ func (s *testMsgStoreForRecall) CountMessages(ctx context.Context) (int, error) 
 	return 0, nil
 }
 
-// TestRecallOnline verifies that a recall notification is delivered to an
-// online target peer with the correct fields.
+// TestRecallOnline 验证撤回通知会投递给在线目标对端，
+// 且字段正确。
 func TestRecallOnline(t *testing.T) {
 	h := NewHub(100)
 	sg, _ := snowflake.New(1)
@@ -78,10 +78,10 @@ func TestRecallOnline(t *testing.T) {
 		Cmd:  proto.CmdRecall,
 		From: "alice",
 		To:   "bob",
-		Seq:  12345678, // original MsgID to recall
+		Seq:  12345678, // 要撤回的原始 MsgID
 	})
 
-	// Target should receive the recall notification.
+	// 目标应收到撤回通知。
 	delivered := readMessageFromChan(t, target.send)
 	if delivered.Cmd != proto.CmdRecall {
 		t.Errorf("expected CmdRecall, got cmd=%d", delivered.Cmd)
@@ -99,7 +99,7 @@ func TestRecallOnline(t *testing.T) {
 		t.Errorf("expected Seq=12345678 (original MsgID), got %d", delivered.Seq)
 	}
 
-	// RecallMessage was called on the store.
+	// 存储上的 RecallMessage 已被调用。
 	if len(store.recalled) != 1 {
 		t.Errorf("expected 1 recall call, got %d", len(store.recalled))
 	}
@@ -110,19 +110,19 @@ func TestRecallOnline(t *testing.T) {
 		t.Errorf("expected recallFromUID=alice, got %s", store.recallFromUID)
 	}
 
-	// Sender should NOT receive an ACK.
+	// 发送者不应收到 ACK。
 	assertChanEmpty(t, sender.send)
 }
 
-// TestRecallOffline verifies that recall notifications for offline targets
-// are stored in the offline queue.
+// TestRecallOffline 验证针对离线目标的撤回通知
+// 会存储在离线队列中。
 func TestRecallOffline(t *testing.T) {
 	h := NewHub(100)
 	sg, _ := snowflake.New(1)
 	store := &testMsgStoreForRecall{}
 	r := NewRouter(h, h, sg, store, DefaultRouterConfig())
 
-	// Bob is NOT registered (offline).
+	// Bob 未注册（离线）。
 	sender := newTestClient(t, "alice", "Alice")
 	r.Route(context.Background(), sender, &proto.Message{
 		Cmd:  proto.CmdRecall,
@@ -131,7 +131,7 @@ func TestRecallOffline(t *testing.T) {
 		Seq:  999888777,
 	})
 
-	// Recall notification should be stored offline.
+	// 撤回通知应存储在离线队列中。
 	offlineMsgs := h.DrainOffline(context.Background(), "bob")
 	if len(offlineMsgs) != 1 {
 		t.Fatalf("expected 1 offline recall for bob, got %d", len(offlineMsgs))
@@ -144,7 +144,7 @@ func TestRecallOffline(t *testing.T) {
 	}
 }
 
-// TestRecallMissingTarget verifies that recall without a target is rejected.
+// TestRecallMissingTarget 验证缺少目标的撤回会被拒绝。
 func TestRecallMissingTarget(t *testing.T) {
 	h := NewHub(100)
 	sg, _ := snowflake.New(1)
@@ -155,18 +155,18 @@ func TestRecallMissingTarget(t *testing.T) {
 	r.Route(context.Background(), sender, &proto.Message{
 		Cmd:  proto.CmdRecall,
 		From: "alice",
-		To:   "", // missing target
+		To:   "", // 缺少目标
 		Seq:  123,
 	})
 
-	// Nothing should be delivered, no recall called.
+	// 不应投递任何内容，也不应调用撤回。
 	assertChanEmpty(t, sender.send)
 	if len(store.recalled) != 0 {
 		t.Errorf("expected 0 recall calls, got %d", len(store.recalled))
 	}
 }
 
-// TestRecallSelfTarget verifies that self-recall is rejected.
+// TestRecallSelfTarget 验证自我撤回会被拒绝。
 func TestRecallSelfTarget(t *testing.T) {
 	h := NewHub(100)
 	sg, _ := snowflake.New(1)
@@ -179,7 +179,7 @@ func TestRecallSelfTarget(t *testing.T) {
 	r.Route(context.Background(), sender, &proto.Message{
 		Cmd:  proto.CmdRecall,
 		From: "alice",
-		To:   "alice", // self-target
+		To:   "alice", // 自我目标
 		Seq:  123,
 	})
 
@@ -189,7 +189,7 @@ func TestRecallSelfTarget(t *testing.T) {
 	}
 }
 
-// TestRecallWithoutSeq verifies that recall without Seq (original MsgID) is rejected.
+// TestRecallWithoutSeq 验证缺少 Seq（原始 MsgID）的撤回会被拒绝。
 func TestRecallWithoutSeq(t *testing.T) {
 	h := NewHub(100)
 	sg, _ := snowflake.New(1)
@@ -204,10 +204,10 @@ func TestRecallWithoutSeq(t *testing.T) {
 		Cmd:  proto.CmdRecall,
 		From: "alice",
 		To:   "bob",
-		Seq:  0, // missing original MsgID
+		Seq:  0, // 缺少原始 MsgID
 	})
 
-	// Sender should get error response.
+	// 发送者应收到错误响应。
 	errMsg := readMessageFromChan(t, sender.send)
 	if errMsg.Cmd != proto.CmdRecall {
 		t.Errorf("expected CmdRecall error, got cmd=%d", errMsg.Cmd)
@@ -216,15 +216,15 @@ func TestRecallWithoutSeq(t *testing.T) {
 		t.Errorf("expected error content, got %s", errMsg.Content)
 	}
 
-	// Target should receive nothing.
+	// 目标不应收到任何内容。
 	assertChanEmpty(t, target.send)
 	if len(store.recalled) != 0 {
 		t.Errorf("expected 0 recall calls, got %d", len(store.recalled))
 	}
 }
 
-// TestRecallFromOverwrite verifies that the authenticated sender UID overwrites
-// whatever the client sent in msg.From.
+// TestRecallFromOverwrite 验证已认证的发送者 UID 会覆盖
+// 客户端在 msg.From 中发送的任何内容。
 func TestRecallFromOverwrite(t *testing.T) {
 	h := NewHub(100)
 	sg, _ := snowflake.New(1)
@@ -237,7 +237,7 @@ func TestRecallFromOverwrite(t *testing.T) {
 	sender := newTestClient(t, "alice", "Alice")
 	r.Route(context.Background(), sender, &proto.Message{
 		Cmd:  proto.CmdRecall,
-		From: "evil_spoofer", // client tries to spoof
+		From: "evil_spoofer", // 客户端试图伪造
 		To:   "bob",
 		Seq:  7777,
 	})
@@ -247,21 +247,21 @@ func TestRecallFromOverwrite(t *testing.T) {
 		t.Errorf("expected From to be overwritten to 'alice', got '%s'", delivered.From)
 	}
 
-	// The store should see the real sender UID.
+	// 存储应看到真实的发送者 UID。
 	if store.recallFromUID != "alice" {
 		t.Errorf("expected recallFromUID=alice, got %s", store.recallFromUID)
 	}
 }
 
-// TestRecallCrossGateway verifies that recall notifications are forwarded to
-// peer gateways when the target is owned by another node.
+// TestRecallCrossGateway 验证当目标归其他节点所有时，
+// 撤回通知会转发给对端网关。
 func TestRecallCrossGateway(t *testing.T) {
 	h := NewHub(100)
 	sg, _ := snowflake.New(1)
 	store := &testMsgStoreForRecall{}
 	r := NewRouter(h, h, sg, store, DefaultRouterConfig())
 
-	// Ring has only "gw-2" — all targets forward to gw-2.
+	// 哈希环只有 "gw-2" —— 所有目标转发到 gw-2。
 	hr := makeHashRing("gw-2")
 	r.SetHashRing(hr)
 	r.SetThisNodeID("gw-1")
@@ -290,8 +290,8 @@ func TestRecallCrossGateway(t *testing.T) {
 	assertChanEmpty(t, sender.send)
 }
 
-// TestRecallCrossGatewayForwardFail verifies that when cross-gateway
-// forwarding fails, the recall falls back to local offline storage.
+// TestRecallCrossGatewayForwardFail 验证跨网关转发失败时，
+// 撤回会回退到本地离线存储。
 func TestRecallCrossGatewayForwardFail(t *testing.T) {
 	h := NewHub(100)
 	sg, _ := snowflake.New(1)
@@ -313,12 +313,12 @@ func TestRecallCrossGatewayForwardFail(t *testing.T) {
 		Seq:  4444,
 	})
 
-	// Forwarder was attempted.
+	// 已尝试转发。
 	if len(fw.forwarded) != 1 {
 		t.Fatalf("expected 1 forward attempt, got %d", len(fw.forwarded))
 	}
 
-	// Fallback: recall stored offline locally.
+	// 回退：撤回存储在本地离线队列中。
 	offlineMsgs := h.DrainOffline(context.Background(), "bob")
 	if len(offlineMsgs) != 1 {
 		t.Fatalf("expected 1 offline recall after forward fail, got %d", len(offlineMsgs))
@@ -328,8 +328,8 @@ func TestRecallCrossGatewayForwardFail(t *testing.T) {
 	}
 }
 
-// TestRecallNoAck verifies that even when NeedAck is set, no ACK is
-// generated for recall — the notification to the peer is sufficient.
+// TestRecallNoAck 验证即使设置了 NeedAck，撤回也不会生成 ACK ——
+// 向对端发送通知已足够。
 func TestRecallNoAck(t *testing.T) {
 	h := NewHub(100)
 	sg, _ := snowflake.New(1)
@@ -348,15 +348,15 @@ func TestRecallNoAck(t *testing.T) {
 		NeedAck: true,
 	})
 
-	// Target receives the recall notification.
+	// 目标收到撤回通知。
 	_ = readMessageFromChan(t, target.send)
 
-	// Sender must NOT receive an ACK.
+	// 发送者绝不应收到 ACK。
 	assertChanEmpty(t, sender.send)
 }
 
-// TestRecallMessageStoreError verifies that when RecallMessage fails in the
-// store, the sender gets an error response.
+// TestRecallMessageStoreError 验证当存储中的 RecallMessage 失败时，
+// 发送者会收到错误响应。
 func TestRecallMessageStoreError(t *testing.T) {
 	h := NewHub(100)
 	sg, _ := snowflake.New(1)
@@ -373,7 +373,7 @@ func TestRecallMessageStoreError(t *testing.T) {
 		Seq:  9999,
 	})
 
-	// Sender should get error response.
+	// 发送者应收到错误响应。
 	errMsg := readMessageFromChan(t, sender.send)
 	if errMsg.Cmd != proto.CmdRecall {
 		t.Errorf("expected CmdRecall error, got cmd=%d", errMsg.Cmd)
@@ -383,22 +383,22 @@ func TestRecallMessageStoreError(t *testing.T) {
 	}
 }
 
-// TestRecallValidateRejectsBadCmd verifies that Validate() rejects commands
-// above CmdRecall.
+// TestRecallValidateRejectsBadCmd 验证 Validate() 会拒绝
+// 大于 CmdRecall 的命令。
 func TestRecallValidateRejectsBadCmd(t *testing.T) {
-	// Valid: CmdRecall = 19
+	// 有效：CmdRecall = 19
 	msg := &proto.Message{Cmd: proto.CmdRecall, To: "bob"}
 	if err := msg.Validate(); err != nil {
 		t.Errorf("CmdRecall with To should be valid, got: %v", err)
 	}
 
-	// Invalid: CmdRecall without To
+	// 无效：CmdRecall 缺少 To
 	msgNoTo := &proto.Message{Cmd: proto.CmdRecall, To: ""}
 	if err := msgNoTo.Validate(); err == nil {
 		t.Error("CmdRecall without To should fail validation")
 	}
 
-	// Invalid: value above max valid Cmd (CmdEdit=24 is now valid)
+	// 无效：超过最大有效 Cmd 的值（CmdEdit=24 现在是有效的）
 	msgBad := &proto.Message{Cmd: 25, To: "bob"}
 	if err := msgBad.Validate(); err == nil {
 		t.Error("cmd=25 should fail validation")

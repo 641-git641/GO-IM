@@ -7,28 +7,27 @@ import (
 	"log"
 )
 
-// UnreadRow represents an unread count row.
+// UnreadRow 表示一条未读计数的数据行。
 type UnreadRow struct {
 	UID   string
 	Peer  string
 	Count int64
 }
 
-// MySQLUnreadStore persists unread counts to MySQL.
-// This is the authoritative store; the Gateway maintains an in-memory cache
-// for hot-path increment operations.
+// MySQLUnreadStore 将未读计数持久化到 MySQL。
+// 这是权威存储；Gateway 维护一个内存缓存用于热路径的递增操作。
 type MySQLUnreadStore struct {
 	db *sql.DB
 }
 
-// NewMySQLUnreadStore creates a MySQLUnreadStore using an existing database connection.
-// The caller must ensure that the unread table exists (MySQLStore.migrate() creates it).
+// NewMySQLUnreadStore 使用现有的数据库连接创建 MySQLUnreadStore。
+// 调用方必须确保 unread 表已存在（MySQLStore.migrate() 会创建它）。
 func NewMySQLUnreadStore(db *sql.DB) *MySQLUnreadStore {
 	return &MySQLUnreadStore{db: db}
 }
 
-// Increment increments the unread count for (uid, peer) and returns the new count.
-// Uses INSERT ... ON DUPLICATE KEY UPDATE for atomic upsert.
+// Increment 增加 (uid, peer) 的未读计数并返回新计数。
+// 使用 INSERT ... ON DUPLICATE KEY UPDATE 实现原子 upsert。
 func (s *MySQLUnreadStore) Increment(ctx context.Context, uid, peer string) (int64, error) {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO unread (uid, peer, count) VALUES (?, ?, 1)
@@ -39,11 +38,11 @@ func (s *MySQLUnreadStore) Increment(ctx context.Context, uid, peer string) (int
 		return 0, fmt.Errorf("increment unread: %w", err)
 	}
 
-	// Read back the new count.
+	// 读回新计数。
 	return s.GetCount(ctx, uid, peer)
 }
 
-// MarkRead clears the unread count for (reader, peer).
+// MarkRead 清除 (reader, peer) 的未读计数。
 func (s *MySQLUnreadStore) MarkRead(ctx context.Context, reader, peer string) error {
 	_, err := s.db.ExecContext(ctx,
 		"DELETE FROM unread WHERE uid = ? AND peer = ?",
@@ -56,7 +55,7 @@ func (s *MySQLUnreadStore) MarkRead(ctx context.Context, reader, peer string) er
 	return nil
 }
 
-// GetCounts returns all unread counts for a user.
+// GetCounts 返回一个用户的全部未读计数。
 func (s *MySQLUnreadStore) GetCounts(ctx context.Context, uid string) (map[string]int64, error) {
 	rows, err := s.db.QueryContext(ctx,
 		"SELECT peer, count FROM unread WHERE uid = ?", uid,
@@ -81,7 +80,7 @@ func (s *MySQLUnreadStore) GetCounts(ctx context.Context, uid string) (map[strin
 	return counts, nil
 }
 
-// GetCount returns the unread count for a specific (uid, peer).
+// GetCount 返回特定 (uid, peer) 的未读计数。
 func (s *MySQLUnreadStore) GetCount(ctx context.Context, uid, peer string) (int64, error) {
 	var count int64
 	err := s.db.QueryRowContext(ctx,

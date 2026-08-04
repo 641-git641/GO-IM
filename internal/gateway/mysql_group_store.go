@@ -9,22 +9,22 @@ import (
 	"github.com/im/internal/repo"
 )
 
-// Compile-time check: MySQLGroupStore implements GroupStore.
+// 编译期检查:MySQLGroupStore 实现了 GroupStore。
 var _ GroupStore = (*MySQLGroupStore)(nil)
 
-// MySQLGroupStore implements GroupStore backed by MySQL.
-// It delegates all SQL operations to repo.MySQLGroupStore, acting as a thin
-// adapter that maps between the repo layer's GroupRow types and the gateway
-// layer's Group type (which includes a populated Members map).
+// MySQLGroupStore 实现基于 MySQL 的 GroupStore。
+// 它将所有 SQL 操作委托给 repo.MySQLGroupStore,充当薄适配器,
+// 在 repo 层的 GroupRow 类型与 gateway 层的 Group 类型
+// (包含已填充的 Members 映射)之间做映射。
 type MySQLGroupStore struct {
-	db   *sql.DB                 // retained for direct access if needed
-	snow *snowflake.Generator    // retained for ID generation
-	repo *repo.MySQLGroupStore   // the single source of SQL operations
+	db   *sql.DB                 // 保留以备直接访问之需
+	snow *snowflake.Generator    // 保留用于生成 ID
+	repo *repo.MySQLGroupStore   // SQL 操作的唯一来源
 }
 
-// NewMySQLGroupStore creates a MySQLGroupStore using an existing database connection.
-// The caller must ensure that the groups and group_members tables exist
-// (MySQLStore.migrate() creates them).
+// NewMySQLGroupStore 使用现有的数据库连接创建一个 MySQLGroupStore。
+// 调用方必须确保 groups 和 group_members 表已存在
+// (MySQLStore.migrate() 会创建它们)。
 func NewMySQLGroupStore(db *sql.DB, snow *snowflake.Generator) *MySQLGroupStore {
 	return &MySQLGroupStore{
 		db:   db,
@@ -33,7 +33,7 @@ func NewMySQLGroupStore(db *sql.DB, snow *snowflake.Generator) *MySQLGroupStore 
 	}
 }
 
-// translateRepoError maps repo-layer sentinel errors to their gateway equivalents.
+// translateRepoError 将 repo 层的哨兵错误映射为 gateway 层对应的错误。
 func translateRepoError(err error) error {
 	if err == nil {
 		return nil
@@ -52,9 +52,9 @@ func translateRepoError(err error) error {
 	}
 }
 
-// ---------- GroupStore implementation ----------
+// ---------- GroupStore 实现 ----------
 
-// Create creates a new group and adds the owner and initial members.
+// Create 创建新群并添加群主和初始成员。
 func (s *MySQLGroupStore) Create(ctx context.Context, name, ownerUID string, members []string) (*Group, error) {
 	row, err := s.repo.CreateGroup(ctx, name, ownerUID, members)
 	if err != nil {
@@ -75,29 +75,29 @@ func (s *MySQLGroupStore) Create(ctx context.Context, name, ownerUID string, mem
 	}, nil
 }
 
-// AddMember adds a user to a group.
+// AddMember 将用户加入群。
 func (s *MySQLGroupStore) AddMember(ctx context.Context, groupID, uid string) error {
 	return translateRepoError(s.repo.AddMember(ctx, groupID, uid))
 }
 
-// RemoveMember removes a user from a group. If the group becomes empty, it is deleted.
+// RemoveMember 将用户移出群。如果群变为空,则删除该群。
 func (s *MySQLGroupStore) RemoveMember(ctx context.Context, groupID, uid string) error {
 	_, err := s.repo.RemoveMember(ctx, groupID, uid)
 	return translateRepoError(err)
 }
 
-// GetMembers returns the list of member UIDs for a group.
+// GetMembers 返回群的成员 UID 列表。
 func (s *MySQLGroupStore) GetMembers(ctx context.Context, groupID string) ([]string, error) {
 	members, err := s.repo.GetMembers(ctx, groupID)
 	return members, translateRepoError(err)
 }
 
-// IsMember returns true if the user is a member of the group.
+// IsMember 如果用户是该群成员则返回 true。
 func (s *MySQLGroupStore) IsMember(ctx context.Context, groupID, uid string) bool {
 	return s.repo.IsMember(ctx, groupID, uid)
 }
 
-// GetUserGroups returns all groups the user is a member of, with members populated.
+// GetUserGroups 返回用户所属的所有群,并填充成员列表。
 func (s *MySQLGroupStore) GetUserGroups(ctx context.Context, uid string) ([]*Group, error) {
 	rows, err := s.repo.ListGroups(ctx, uid)
 	if err != nil {
@@ -113,7 +113,7 @@ func (s *MySQLGroupStore) GetUserGroups(ctx context.Context, uid string) ([]*Gro
 			Members:   make(map[string]bool),
 			CreatedAt: row.CreatedAt,
 		}
-		// Populate member list for each group.
+		// 为每个群填充成员列表。
 		members, err := s.repo.GetMembers(ctx, g.ID)
 		if err != nil {
 			return nil, translateRepoError(err)
@@ -127,7 +127,7 @@ func (s *MySQLGroupStore) GetUserGroups(ctx context.Context, uid string) ([]*Gro
 	return groups, nil
 }
 
-// Get returns a group by ID with members populated, or ErrGroupNotFound.
+// Get 按 ID 返回群并填充成员列表,未找到时返回 ErrGroupNotFound。
 func (s *MySQLGroupStore) Get(ctx context.Context, groupID string) (*Group, error) {
 	row, members, err := s.repo.GetMembersForGroup(ctx, groupID)
 	if err != nil {
@@ -147,12 +147,12 @@ func (s *MySQLGroupStore) Get(ctx context.Context, groupID string) (*Group, erro
 	return g, nil
 }
 
-// UpdateName changes the group's display name.
+// UpdateName 修改群的显示名称。
 func (s *MySQLGroupStore) UpdateName(ctx context.Context, groupID, newName string) error {
 	return translateRepoError(s.repo.UpdateName(ctx, groupID, newName))
 }
 
-// TransferOwnership transfers group ownership from one member to another.
+// TransferOwnership 将群所有权从一个成员转给另一个成员。
 func (s *MySQLGroupStore) TransferOwnership(ctx context.Context, groupID, fromUID, toUID string) error {
 	return translateRepoError(s.repo.TransferOwnership(ctx, groupID, fromUID, toUID))
 }

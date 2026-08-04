@@ -9,10 +9,10 @@ import (
 	"testing"
 )
 
-// newTestJPEG creates a small JPEG image in memory.
+// newTestJPEG 在内存中创建一张小型 JPEG 图片。
 func newTestJPEG(w, h int) []byte {
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
-	// Fill with a gradient pattern.
+	// 用渐变图案填充。
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
 			img.Set(x, y, color.RGBA{
@@ -28,7 +28,7 @@ func newTestJPEG(w, h int) []byte {
 	return buf.Bytes()
 }
 
-// newTestPNG creates a small PNG image in memory.
+// newTestPNG 在内存中创建一张小型 PNG 图片。
 func newTestPNG(w, h int) []byte {
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
 	for y := 0; y < h; y++ {
@@ -53,7 +53,7 @@ func TestThumbnailJPEG(t *testing.T) {
 		t.Fatalf("Thumbnail: %v", err)
 	}
 
-	// Decode the thumbnail to check dimensions.
+	// 解码缩略图以检查尺寸。
 	img, _, err := image.Decode(bytes.NewReader(thumb))
 	if err != nil {
 		t.Fatalf("decode thumbnail: %v", err)
@@ -64,8 +64,8 @@ func TestThumbnailJPEG(t *testing.T) {
 		t.Errorf("thumbnail too large: %dx%d, max is %d", b.Dx(), b.Dy(), ThumbnailMaxDim)
 	}
 
-	// Should preserve aspect ratio: 800:600 = 4:3.
-	// Max dim = 200 → 200×150.
+	// 应保持宽高比：800:600 = 4:3。
+	// 最大边 = 200 → 200×150。
 	if b.Dx() != 200 || b.Dy() != 150 {
 		t.Errorf("expected 200×150 for 800:600, got %dx%d", b.Dx(), b.Dy())
 	}
@@ -84,14 +84,14 @@ func TestThumbnailPNG(t *testing.T) {
 	}
 
 	b := img.Bounds()
-	// 400:300 = 4:3. Max 200 → 200×150.
+	// 400:300 = 4:3。最大 200 → 200×150。
 	if b.Dx() != 200 || b.Dy() != 150 {
 		t.Errorf("expected 200×150 for 400:300, got %dx%d", b.Dx(), b.Dy())
 	}
 }
 
 func TestThumbnailSmallImage(t *testing.T) {
-	// Image smaller than max — should not be upscaled.
+	// 图片小于最大值 —— 不应放大。
 	orig := newTestJPEG(50, 50)
 	thumb, err := Thumbnail(orig)
 	if err != nil {
@@ -110,7 +110,7 @@ func TestThumbnailSmallImage(t *testing.T) {
 }
 
 func TestThumbnailSquareTall(t *testing.T) {
-	// Tall image: 100×400. Max 200 → 50×200.
+	// 高图：100×400。最大 200 → 50×200。
 	orig := newTestJPEG(100, 400)
 	thumb, err := Thumbnail(orig)
 	if err != nil {
@@ -129,7 +129,7 @@ func TestThumbnailSquareTall(t *testing.T) {
 }
 
 func TestThumbnailWide(t *testing.T) {
-	// Wide image: 400×100. Max 200 → 200×50.
+	// 宽图：400×100。最大 200 → 200×50。
 	orig := newTestJPEG(400, 100)
 	thumb, err := Thumbnail(orig)
 	if err != nil {
@@ -181,7 +181,7 @@ func TestIsImageMIME(t *testing.T) {
 		{"image/png", true},
 		{"image/gif", true},
 		{"image/webp", true},
-		{"image/svg+xml", false}, // SVG is vector, no thumbnail
+		{"image/svg+xml", false}, // SVG 是矢量图，无缩略图
 		{"text/plain", false},
 		{"application/pdf", false},
 		{"video/mp4", false},

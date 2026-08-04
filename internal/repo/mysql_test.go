@@ -12,7 +12,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
-// mysqlDSN returns the test MySQL DSN, or an empty string if MySQL is not available.
+// mysqlDSN 返回测试用 MySQL DSN，如果 MySQL 不可用则返回空字符串。
 func mysqlDSN() string {
 	dsn := os.Getenv("MYSQL_TEST_DSN")
 	if dsn == "" {
@@ -21,7 +21,7 @@ func mysqlDSN() string {
 	return dsn
 }
 
-// newTestMySQLStore creates a MySQLStore for testing, skipping if unavailable.
+// newTestMySQLStore 创建用于测试的 MySQLStore，不可用时跳过测试。
 func newTestMySQLStore(t *testing.T) *MySQLStore {
 	t.Helper()
 
@@ -43,7 +43,7 @@ func newTestMySQLStore(t *testing.T) *MySQLStore {
 	return s
 }
 
-// truncateAll removes test data from both tables.
+// truncateAll 从两张表中删除测试数据。
 func truncateAll(t *testing.T, s *MySQLStore) {
 	t.Helper()
 	for _, table := range []string{"messages", "users"} {
@@ -53,7 +53,7 @@ func truncateAll(t *testing.T, s *MySQLStore) {
 	}
 }
 
-// ---------- User tests ----------
+// ---------- 用户测试 ----------
 
 func TestMySQLUserCreateAndGet(t *testing.T) {
 	s := newTestMySQLStore(t)
@@ -119,7 +119,7 @@ func TestMySQLUserNotFound(t *testing.T) {
 	}
 }
 
-// ---------- Message tests ----------
+// ---------- 消息测试 ----------
 
 func TestMySQLMessageSaveAndQuery(t *testing.T) {
 	s := newTestMySQLStore(t)
@@ -129,7 +129,7 @@ func TestMySQLMessageSaveAndQuery(t *testing.T) {
 	ctx := context.Background()
 	now := int64(1721318400000)
 
-	// Save 3 messages between alice and bob.
+	// 保存 alice 与 bob 之间的 3 条消息。
 	msgs := []*proto.Message{
 		{MsgId: 1001, Seq: 1, Cmd: proto.CmdChat, From: "alice", To: "bob", ChatType: proto.ChatTypeSingle, MsgType: proto.MsgTypeText, Content: "Hello Bob!", Timestamp: now, NeedAck: true},
 		{MsgId: 1002, Seq: 1, Cmd: proto.CmdChat, From: "bob", To: "alice", ChatType: proto.ChatTypeSingle, MsgType: proto.MsgTypeText, Content: "Hi Alice!", Timestamp: now + 1000, NeedAck: true},
@@ -142,7 +142,7 @@ func TestMySQLMessageSaveAndQuery(t *testing.T) {
 		}
 	}
 
-	// Query history between alice and bob (all messages, sorted newest first).
+	// 查询 alice 与 bob 之间的历史记录（全部消息，按从新到旧排序）。
 	history, err := s.QueryHistory(ctx, "alice", "bob", now+10000, 50)
 	if err != nil {
 		t.Fatalf("QueryHistory: %v", err)
@@ -151,7 +151,7 @@ func TestMySQLMessageSaveAndQuery(t *testing.T) {
 		t.Fatalf("expected 3 messages, got %d", len(history))
 	}
 
-	// Newest first: msg 1003, 1002, 1001.
+	// 从新到旧：msg 1003, 1002, 1001。
 	if history[0].MsgId != 1003 {
 		t.Errorf("history[0]: expected msgId=1003, got %d", history[0].MsgId)
 	}
@@ -162,7 +162,7 @@ func TestMySQLMessageSaveAndQuery(t *testing.T) {
 		t.Errorf("history[2]: expected msgId=1001, got %d", history[2].MsgId)
 	}
 
-	// Verify content round-trips.
+	// 验证内容可以正确往返。
 	if history[0].Content != "How are you?" {
 		t.Errorf("content: expected 'How are you?', got '%s'", history[0].Content)
 	}
@@ -182,7 +182,7 @@ func TestMySQLQueryHistoryPagination(t *testing.T) {
 	ctx := context.Background()
 	now := int64(1721318400000)
 
-	// Save 5 messages.
+	// 保存 5 条消息。
 	for i := 0; i < 5; i++ {
 		from := "alice"
 		to := "bob"
@@ -200,7 +200,7 @@ func TestMySQLQueryHistoryPagination(t *testing.T) {
 		}
 	}
 
-	// Query with limit 3, before the latest timestamp.
+	// 以 limit 3 查询早于最新时间戳的消息。
 	history, err := s.QueryHistory(ctx, "alice", "bob", now+10000, 3)
 	if err != nil {
 		t.Fatalf("QueryHistory: %v", err)
@@ -209,8 +209,8 @@ func TestMySQLQueryHistoryPagination(t *testing.T) {
 		t.Fatalf("expected 3 messages (limit), got %d", len(history))
 	}
 
-	// Pagination: the 3 newest messages should be returned.
-	// Messages are: 2004 (newest), 2003, 2002
+	// 分页：应返回最新的 3 条消息。
+	// 消息为：2004（最新）、2003、2002
 	if history[0].MsgId != 2004 {
 		t.Errorf("history[0]: expected msgId=2004, got %d", history[0].MsgId)
 	}
@@ -218,7 +218,7 @@ func TestMySQLQueryHistoryPagination(t *testing.T) {
 		t.Errorf("history[2]: expected msgId=2002, got %d", history[2].MsgId)
 	}
 
-	// Now query before msg 2002's timestamp (now+1000).
+	// 现在查询早于 msg 2002 时间戳（now+1000）的消息。
 	history2, err := s.QueryHistory(ctx, "alice", "bob", now+1000, 50)
 	if err != nil {
 		t.Fatalf("QueryHistory (before): %v", err)
@@ -253,13 +253,13 @@ func TestMySQLQueryHistoryOtherUserNotIncluded(t *testing.T) {
 	ctx := context.Background()
 	now := int64(1721318400000)
 
-	// Alice-Bob conversation.
+	// Alice-Bob 会话。
 	s.Save(ctx, &proto.Message{
 		MsgId: 3001, Seq: 1, Cmd: proto.CmdChat,
 		From: "alice", To: "bob", ChatType: proto.ChatTypeSingle, MsgType: proto.MsgTypeText,
 		Content: "AB", Timestamp: now,
 	})
-	// Alice-Carol conversation (should NOT appear in alice-bob query).
+	// Alice-Carol 会话（不应出现在 alice-bob 查询中）。
 	s.Save(ctx, &proto.Message{
 		MsgId: 3002, Seq: 1, Cmd: proto.CmdChat,
 		From: "alice", To: "carol", ChatType: proto.ChatTypeSingle, MsgType: proto.MsgTypeText,

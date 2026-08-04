@@ -22,7 +22,7 @@ export default function FriendInfoPanel({
   return (
     <div className="fixed inset-y-0 right-0 z-40 w-80 bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 shadow-xl">
       <div className="flex flex-col h-full">
-        {/* Header */}
+        {/* 头部 */}
         <div className="h-14 px-4 flex items-center justify-between border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
           <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">好友设置</h3>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
@@ -30,9 +30,9 @@ export default function FriendInfoPanel({
           </button>
         </div>
 
-        {/* Content */}
+        {/* 内容 */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {/* Avatar & name */}
+          {/* 头像与名称 */}
           <div className="text-center">
             <div className="w-16 h-16 rounded-full bg-primary-500 flex items-center justify-center text-white text-xl font-bold mx-auto">
               {peerName.slice(0, 2).toUpperCase()}
@@ -41,7 +41,7 @@ export default function FriendInfoPanel({
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 font-mono">{peerId}</p>
           </div>
 
-          {/* Actions */}
+          {/* 操作 */}
           <div className="pt-3 border-t border-gray-200 dark:border-gray-800 space-y-2">
             {onMarkUnread && (
               <button

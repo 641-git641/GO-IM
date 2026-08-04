@@ -14,7 +14,7 @@ import (
 	pb "google.golang.org/protobuf/proto"
 )
 
-// readFromChan reads a single []byte from a channel with a timeout.
+// readFromChan 从通道读取一个 []byte，带超时。
 func readFromChan(t *testing.T, ch <-chan []byte) []byte {
 	t.Helper()
 	select {
@@ -26,7 +26,7 @@ func readFromChan(t *testing.T, ch <-chan []byte) []byte {
 	}
 }
 
-// readMessageFromChan reads and unmarshals a proto.Message from a channel.
+// readMessageFromChan 从通道读取并反序列化 proto.Message。
 func readMessageFromChan(t *testing.T, ch <-chan []byte) *proto.Message {
 	t.Helper()
 	raw := readFromChan(t, ch)
@@ -37,18 +37,18 @@ func readMessageFromChan(t *testing.T, ch <-chan []byte) *proto.Message {
 	return msg
 }
 
-// assertChanEmpty verifies no message is waiting on the channel.
+// assertChanEmpty 验证通道上没有等待中的消息。
 func assertChanEmpty(t *testing.T, ch <-chan []byte) {
 	t.Helper()
 	select {
 	case data := <-ch:
 		t.Errorf("expected empty channel, got: %s", string(data))
 	default:
-		// expected
+		// 预期行为
 	}
 }
 
-// ---------- Heartbeat ----------
+// ---------- 心跳 ----------
 
 func TestRouteHeartbeat(t *testing.T) {
 	h := NewHub(100)
@@ -69,21 +69,21 @@ func TestRouteHeartbeat(t *testing.T) {
 	}
 }
 
-// ---------- Chat — Online delivery ----------
+// ---------- 聊天 —— 在线投递 ----------
 
 func TestRouteChatOnline(t *testing.T) {
 	h := NewHub(100)
 	sg, _ := snowflake.New(1)
 	r := NewRouter(h, h, sg, nil, DefaultRouterConfig())
 
-	// Register target in hub
+	// 在 hub 中注册目标客户端
 	target := newTestClient(t, "bob", "Bob")
 	h.Register(context.Background(), target)
 
 	sender := newTestClient(t, "alice", "Alice")
 	r.Route(context.Background(), sender, &proto.Message{
 		Cmd:      proto.CmdChat,
-		From:     "alice", // set by readPump in production, set manually in test
+		From:     "alice", // 生产环境由 readPump 设置，测试中手动设置
 		To:       "bob",
 		ChatType: proto.ChatTypeSingle,
 		MsgType:  proto.MsgTypeText,
@@ -92,7 +92,7 @@ func TestRouteChatOnline(t *testing.T) {
 		Seq:      1,
 	})
 
-	// Target should receive the message
+	// 目标应收到消息
 	delivered := readMessageFromChan(t, target.send)
 	if delivered.Cmd != proto.CmdChat {
 		t.Errorf("expected CmdChat, got cmd=%d", delivered.Cmd)
@@ -107,7 +107,7 @@ func TestRouteChatOnline(t *testing.T) {
 		t.Error("expected non-zero MsgID")
 	}
 
-	// Sender should receive ACK
+	// 发送者应收到 ACK
 	ack := readMessageFromChan(t, sender.send)
 	if ack.Cmd != proto.CmdAck {
 		t.Errorf("expected CmdAck, got cmd=%d", ack.Cmd)
@@ -120,7 +120,7 @@ func TestRouteChatOnline(t *testing.T) {
 	}
 }
 
-// ---------- Chat — Offline storage ----------
+// ---------- 聊天 —— 离线存储 ----------
 
 func TestRouteChatOffline(t *testing.T) {
 	h := NewHub(100)
@@ -128,11 +128,11 @@ func TestRouteChatOffline(t *testing.T) {
 	r := NewRouter(h, h, sg, nil, DefaultRouterConfig())
 
 	sender := newTestClient(t, "alice", "Alice")
-	// Bob is NOT registered in hub (offline)
+	// Bob 未注册到 hub（离线）
 
 	r.Route(context.Background(), sender, &proto.Message{
 		Cmd:      proto.CmdChat,
-		From:     "alice", // set by readPump in production, set manually in test
+		From:     "alice", // 生产环境由 readPump 设置，测试中手动设置
 		To:       "bob",
 		ChatType: proto.ChatTypeSingle,
 		MsgType:  proto.MsgTypeText,
@@ -141,13 +141,13 @@ func TestRouteChatOffline(t *testing.T) {
 		Seq:      1,
 	})
 
-	// Sender should get ACK even though target is offline
+	// 即使目标离线，发送者也应收到 ACK
 	ack := readMessageFromChan(t, sender.send)
 	if ack.Cmd != proto.CmdAck {
 		t.Errorf("expected CmdAck, got cmd=%d", ack.Cmd)
 	}
 
-	// Message should be in offline store
+	// 消息应存储在离线存储中
 	offlineMsgs := h.DrainOffline(context.Background(),"bob")
 	if len(offlineMsgs) != 1 {
 		t.Fatalf("expected 1 offline message, got %d", len(offlineMsgs))
@@ -160,28 +160,28 @@ func TestRouteChatOffline(t *testing.T) {
 	}
 }
 
-// ---------- Chat — Send buffer full fallback ----------
+// ---------- 聊天 —— 发送缓冲区已满的回退 ----------
 
 func TestRouteChatSendBufferFull(t *testing.T) {
 	h := NewHub(100)
 	sg, _ := snowflake.New(1)
 	r := NewRouter(h, h, sg, nil, DefaultRouterConfig())
 
-	// Create target with tiny send buffer
+	// 创建发送缓冲区极小的目标客户端
 	target := &Client{
 		UID:      "bob",
 		Username: "Bob",
-		send:     make(chan []byte, 1), // buffer of 1
+		send:     make(chan []byte, 1), // 缓冲区大小为 1
 		closed:   make(chan struct{}),
 	}
 	h.Register(context.Background(), target)
 
 	sender := newTestClient(t, "alice", "Alice")
 
-	// Pre-fill the send buffer so the next Send() returns ErrSendBufferFull
+	// 预先填满发送缓冲区，使下一次 Send() 返回 ErrSendBufferFull
 	target.send <- []byte(`{}`)
 
-	// Now send a chat message — Send should fail (buffer full), fallback to offline
+	// 现在发送聊天消息 —— Send 应失败（缓冲区已满），回退到离线存储
 	r.Route(context.Background(), sender, &proto.Message{
 		Cmd:      proto.CmdChat,
 		To:       "bob",
@@ -192,13 +192,13 @@ func TestRouteChatSendBufferFull(t *testing.T) {
 		Seq:      1,
 	})
 
-	// Sender should still get ACK
+	// 发送者仍应收到 ACK
 	ack := readMessageFromChan(t, sender.send)
 	if ack.Cmd != proto.CmdAck {
 		t.Errorf("expected CmdAck, got cmd=%d", ack.Cmd)
 	}
 
-	// Message should be in offline store (send failed → fallback)
+	// 消息应存储在离线存储中（发送失败 → 回退）
 	offlineMsgs := h.DrainOffline(context.Background(),"bob")
 	if len(offlineMsgs) != 1 {
 		t.Fatalf("expected 1 offline message (send buffer full fallback), got %d", len(offlineMsgs))
@@ -208,7 +208,7 @@ func TestRouteChatSendBufferFull(t *testing.T) {
 	}
 }
 
-// ---------- Deduplication ----------
+// ---------- 去重 ----------
 
 func TestRouteDuplicate(t *testing.T) {
 	h := NewHub(100)
@@ -220,7 +220,7 @@ func TestRouteDuplicate(t *testing.T) {
 
 	sender := newTestClient(t, "alice", "Alice")
 
-	// First message
+	// 第一条消息
 	r.Route(context.Background(), sender, &proto.Message{
 		Cmd:      proto.CmdChat,
 		To:       "bob",
@@ -231,14 +231,14 @@ func TestRouteDuplicate(t *testing.T) {
 		Seq:      42,
 	})
 
-	// Drain first delivery and ACK
+	// 排空首次投递与 ACK
 	firstDelivered := readMessageFromChan(t, target.send)
-	_ = readMessageFromChan(t, sender.send) // first ACK
+	_ = readMessageFromChan(t, sender.send) // 首次 ACK
 	originalMsgID := firstDelivered.MsgId
 
 	t.Logf("First delivery: msgId=%d", originalMsgID)
 
-	// Second message with same Seq — should be deduplicated
+	// 相同 Seq 的第二条消息 —— 应被去重
 	r.Route(context.Background(), sender, &proto.Message{
 		Cmd:      proto.CmdChat,
 		To:       "bob",
@@ -246,10 +246,10 @@ func TestRouteDuplicate(t *testing.T) {
 		MsgType:  proto.MsgTypeText,
 		Content:  "Duplicate retry",
 		NeedAck:  true,
-		Seq:      42, // same Seq
+		Seq:      42, // 相同的 Seq
 	})
 
-	// Sender should get a replayed ACK with the original MsgId
+	// 发送者应收到带有原始 MsgId 的重放 ACK
 	replayAck := readMessageFromChan(t, sender.send)
 	if replayAck.Cmd != proto.CmdAck {
 		t.Errorf("expected CmdAck replay, got cmd=%d", replayAck.Cmd)
@@ -258,13 +258,13 @@ func TestRouteDuplicate(t *testing.T) {
 		t.Errorf("replay ACK should have original MsgId=%d, got %d", originalMsgID, replayAck.MsgId)
 	}
 
-	// Target should NOT receive a duplicate
+	// 目标不应收到重复消息
 	assertChanEmpty(t, target.send)
 
 	t.Logf("ACK replay verified: msgId=%d matches original ✓", replayAck.MsgId)
 }
 
-// ---------- Unknown / Invalid commands ----------
+// ---------- 未知 / 无效命令 ----------
 
 func TestRouteCmdNone(t *testing.T) {
 	h := NewHub(100)
@@ -272,7 +272,7 @@ func TestRouteCmdNone(t *testing.T) {
 	r := NewRouter(h, h, sg, nil, DefaultRouterConfig())
 
 	sender := newTestClient(t, "alice", "Alice")
-	// CmdNone should not panic or send anything
+	// CmdNone 不应 panic 或发送任何内容
 	r.Route(context.Background(), sender, &proto.Message{Cmd: proto.CmdNone})
 
 	assertChanEmpty(t, sender.send)
@@ -284,13 +284,13 @@ func TestRouteUnknownCmd(t *testing.T) {
 	r := NewRouter(h, h, sg, nil, DefaultRouterConfig())
 
 	sender := newTestClient(t, "alice", "Alice")
-	// Unknown command should not panic
+	// 未知命令不应 panic
 	r.Route(context.Background(), sender, &proto.Message{Cmd: 999})
 
 	assertChanEmpty(t, sender.send)
 }
 
-// ---------- Offline drain ----------
+// ---------- 离线排空 ----------
 
 func TestRouteOfflineDrain(t *testing.T) {
 	h := NewHub(100)
@@ -304,13 +304,13 @@ func TestRouteOfflineDrain(t *testing.T) {
 	sender := newTestClient(t, "alice", "Alice")
 	r.Route(context.Background(), sender, &proto.Message{Cmd: proto.CmdOffline})
 
-	// Should receive the stored message
+	// 应收到已存储的消息
 	delivered := readMessageFromChan(t, sender.send)
 	if delivered.Cmd != proto.CmdChat || delivered.MsgId != 100 {
 		t.Errorf("expected offline message MsgID=100, got cmd=%d MsgID=%d", delivered.Cmd, delivered.MsgId)
 	}
 
-	// Queue should be drained
+	// 队列应被排空
 	remaining := h.DrainOffline(context.Background(),"alice")
 	if len(remaining) != 0 {
 		t.Errorf("expected empty queue after drain, got %d", len(remaining))
@@ -325,14 +325,14 @@ func TestRouteOfflineDrainEmpty(t *testing.T) {
 	sender := newTestClient(t, "alice", "Alice")
 	r.Route(context.Background(), sender, &proto.Message{Cmd: proto.CmdOffline})
 
-	// Should receive an empty CmdOffline response
+	// 应收到空的 CmdOffline 响应
 	resp := readMessageFromChan(t, sender.send)
 	if resp.Cmd != proto.CmdOffline {
 		t.Errorf("expected CmdOffline response for empty queue, got cmd=%d", resp.Cmd)
 	}
 }
 
-// ---------- ACK not requested ----------
+// ---------- 未请求 ACK ----------
 
 func TestRouteChatNoAck(t *testing.T) {
 	h := NewHub(100)
@@ -349,20 +349,20 @@ func TestRouteChatNoAck(t *testing.T) {
 		ChatType: proto.ChatTypeSingle,
 		MsgType:  proto.MsgTypeText,
 		Content:  "No ACK needed",
-		NeedAck:  false, // no ACK requested
+		NeedAck:  false, // 未请求 ACK
 	})
 
-	// Target should receive the message
+	// 目标应收到消息
 	delivered := readMessageFromChan(t, target.send)
 	if delivered.Content != "No ACK needed" {
 		t.Errorf("expected 'No ACK needed', got '%s'", delivered.Content)
 	}
 
-	// Sender should NOT get an ACK
+	// 发送者不应收到 ACK
 	assertChanEmpty(t, sender.send)
 }
 
-// ---------- Invalid chat (missing target) ----------
+// ---------- 无效聊天（缺少目标）----------
 
 func TestRouteChatInvalidTarget(t *testing.T) {
 	h := NewHub(100)
@@ -370,22 +370,22 @@ func TestRouteChatInvalidTarget(t *testing.T) {
 	r := NewRouter(h, h, sg, nil, DefaultRouterConfig())
 
 	sender := newTestClient(t, "alice", "Alice")
-	// Missing To field — should be ignored (Validate fails)
+	// 缺少 To 字段 —— 应被忽略（Validate 失败）
 	r.Route(context.Background(), sender, &proto.Message{
 		Cmd:      proto.CmdChat,
-		To:       "", // missing target
+		To:       "", // 缺少目标
 		ChatType: proto.ChatTypeSingle,
 		MsgType:  proto.MsgTypeText,
 		Content:  "No target",
 	})
 
-	// No ACK, no delivery
+	// 无 ACK，无投递
 	assertChanEmpty(t, sender.send)
 }
 
-// ---------- History ----------
+// ---------- 历史记录 ----------
 
-// testMsgStore is a minimal in-memory MessageStore for testing handleHistory.
+// testMsgStore 是用于测试 handleHistory 的最小内存版 MessageStore。
 type testMsgStore struct {
 	msgs []*proto.Message
 }
@@ -396,7 +396,7 @@ func (s *testMsgStore) Save(ctx context.Context, msg *proto.Message) error {
 }
 
 func (s *testMsgStore) QueryHistory(ctx context.Context, uid1, uid2 string, before int64, limit int) ([]*proto.Message, error) {
-	// Filter messages between uid1 and uid2, newest first.
+	// 过滤 uid1 与 uid2 之间的消息，按从新到旧排序。
 	var matches []*proto.Message
 	for _, m := range s.msgs {
 		if m.Timestamp < before &&
@@ -404,7 +404,7 @@ func (s *testMsgStore) QueryHistory(ctx context.Context, uid1, uid2 string, befo
 			matches = append(matches, m)
 		}
 	}
-	// Sort newest first.
+	// 按从新到旧排序。
 	sort.Slice(matches, func(i, j int) bool {
 		return matches[i].Timestamp > matches[j].Timestamp
 	})
@@ -415,14 +415,14 @@ func (s *testMsgStore) QueryHistory(ctx context.Context, uid1, uid2 string, befo
 }
 
 func (s *testMsgStore) QueryGroupHistory(ctx context.Context, groupID string, before int64, limit int) ([]*proto.Message, error) {
-	// Filter messages sent to the group, newest first.
+	// 过滤发送到群组的消息，按从新到旧排序。
 	var matches []*proto.Message
 	for _, m := range s.msgs {
 		if m.Timestamp < before && m.To == groupID && m.ChatType == 2 {
 			matches = append(matches, m)
 		}
 	}
-	// Sort newest first.
+	// 按从新到旧排序。
 	sort.Slice(matches, func(i, j int) bool {
 		return matches[i].Timestamp > matches[j].Timestamp
 	})
@@ -485,7 +485,7 @@ func TestRouteHistoryNoStore(t *testing.T) {
 		To:  "bob",
 	})
 
-	// Should receive CmdHistory completion with Seq=0.
+	// 应收到 Seq=0 的 CmdHistory 完成消息。
 	resp := readMessageFromChan(t, sender.send)
 	if resp.Cmd != proto.CmdHistory {
 		t.Errorf("expected CmdHistory response, got cmd=%d", resp.Cmd)
@@ -504,10 +504,10 @@ func TestRouteHistoryInvalidTarget(t *testing.T) {
 	sender := newTestClient(t, "alice", "Alice")
 	r.Route(context.Background(), sender, &proto.Message{
 		Cmd: proto.CmdHistory,
-		To:  "", // missing target
+		To:  "", // 缺少目标
 	})
 
-	// No response — Validate fails.
+	// 无响应 —— Validate 失败。
 	assertChanEmpty(t, sender.send)
 }
 
@@ -517,7 +517,7 @@ func TestRouteHistorySuccess(t *testing.T) {
 	store := &testMsgStore{}
 
 	now := int64(1721318400000)
-	// Pre-populate 3 messages between alice and bob.
+	// 预填充 alice 与 bob 之间的 3 条消息。
 	for i := 0; i < 3; i++ {
 		from := "alice"
 		to := "bob"
@@ -542,11 +542,11 @@ func TestRouteHistorySuccess(t *testing.T) {
 	r.Route(context.Background(), sender, &proto.Message{
 		Cmd:       proto.CmdHistory,
 		To:        "bob",
-		Timestamp: now + 10000, // before this time
-		Seq:       50,          // limit
+		Timestamp: now + 10000, // 早于此时刻
+		Seq:       50,          // 限制条数
 	})
 
-	// Should receive 3 messages (newest first) then a completion.
+	// 应收到 3 条消息（从新到旧），然后是完成消息。
 	msg1 := readMessageFromChan(t, sender.send)
 	if msg1.Cmd != proto.CmdChat || msg1.MsgId != 5002 {
 		t.Errorf("msg1: expected CmdChat MsgId=5002 (newest), got cmd=%d MsgId=%d", msg1.Cmd, msg1.MsgId)
@@ -562,7 +562,7 @@ func TestRouteHistorySuccess(t *testing.T) {
 		t.Errorf("msg3: expected CmdChat MsgId=5000 (oldest), got cmd=%d MsgId=%d", msg3.Cmd, msg3.MsgId)
 	}
 
-	// Completion marker.
+	// 完成标记。
 	done := readMessageFromChan(t, sender.send)
 	if done.Cmd != proto.CmdHistory {
 		t.Errorf("completion: expected CmdHistory, got cmd=%d", done.Cmd)
@@ -577,7 +577,7 @@ func TestRouteHistorySuccess(t *testing.T) {
 func TestRouteHistoryEmpty(t *testing.T) {
 	h := NewHub(100)
 	sg, _ := snowflake.New(1)
-	store := &testMsgStore{} // empty store
+	store := &testMsgStore{} // 空存储
 
 	r := NewRouter(h, h, sg, store, DefaultRouterConfig())
 
@@ -589,7 +589,7 @@ func TestRouteHistoryEmpty(t *testing.T) {
 		Seq:       30,
 	})
 
-	// Only the completion marker.
+	// 只有完成标记。
 	done := readMessageFromChan(t, sender.send)
 	if done.Cmd != proto.CmdHistory {
 		t.Errorf("expected CmdHistory completion, got cmd=%d", done.Cmd)
@@ -606,7 +606,7 @@ func TestRouteHistoryPagination(t *testing.T) {
 	store := &testMsgStore{}
 
 	now := int64(1721318400000)
-	// Pre-populate 5 messages.
+	// 预填充 5 条消息。
 	for i := 0; i < 5; i++ {
 		store.msgs = append(store.msgs, &proto.Message{
 			MsgId:     int64(6000 + i),
@@ -623,15 +623,15 @@ func TestRouteHistoryPagination(t *testing.T) {
 	r := NewRouter(h, h, sg, store, DefaultRouterConfig())
 
 	sender := newTestClient(t, "alice", "Alice")
-	// Request with limit=2.
+	// 请求 limit=2。
 	r.Route(context.Background(), sender, &proto.Message{
 		Cmd:       proto.CmdHistory,
 		To:        "bob",
-		Timestamp: now + 10000, // before this time
-		Seq:       2,           // limit 2
+		Timestamp: now + 10000, // 早于此时刻
+		Seq:       2,           // 限制 2 条
 	})
 
-	// Should get only 2 newest messages.
+	// 应只得到最新的 2 条消息。
 	msg1 := readMessageFromChan(t, sender.send)
 	if msg1.MsgId != 6004 {
 		t.Errorf("msg1: expected MsgId=6004, got %d", msg1.MsgId)
@@ -654,13 +654,13 @@ func TestRouteHistoryOtherUserNotIncluded(t *testing.T) {
 	store := &testMsgStore{}
 
 	now := int64(1721318400000)
-	// Alice-Bob message.
+	// Alice-Bob 消息。
 	store.msgs = append(store.msgs, &proto.Message{
 		MsgId: 7000, Cmd: proto.CmdChat, From: "alice", To: "bob",
 		ChatType: proto.ChatTypeSingle, MsgType: proto.MsgTypeText,
 		Content: "AB", Timestamp: now,
 	})
-	// Alice-Carol message (should NOT appear in alice-bob query).
+	// Alice-Carol 消息（不应出现在 alice-bob 查询中）。
 	store.msgs = append(store.msgs, &proto.Message{
 		MsgId: 7001, Cmd: proto.CmdChat, From: "alice", To: "carol",
 		ChatType: proto.ChatTypeSingle, MsgType: proto.MsgTypeText,
@@ -711,15 +711,15 @@ func TestRouteHistoryDefaultLimit(t *testing.T) {
 	r := NewRouter(h, h, sg, store, DefaultRouterConfig())
 
 	sender := newTestClient(t, "alice", "Alice")
-	// Seq=0 should trigger default limit of 30.
+	// Seq=0 应触发默认限制 30。
 	r.Route(context.Background(), sender, &proto.Message{
 		Cmd:       proto.CmdHistory,
 		To:        "bob",
 		Timestamp: now + 50000,
-		Seq:       0, // default limit
+		Seq:       0, // 默认限制
 	})
 
-	// Count messages.
+	// 统计消息条数。
 	count := 0
 	for {
 		msg := readMessageFromChan(t, sender.send)
@@ -736,13 +736,13 @@ func TestRouteHistoryDefaultLimit(t *testing.T) {
 	}
 }
 
-	// ---------- Multi-Gateway Hash Ring Routing ----------
+	// ---------- 多网关哈希环路由 ----------
 
-	// mockForwarder records all forwarded messages for test assertions.
+	// mockForwarder 记录所有转发的消息，供测试断言使用。
 	type mockForwarder struct {
 		mu        sync.Mutex
 		forwarded []forwardCall
-		// Return values for Forward().
+		// Forward() 的返回值。
 		delivered bool
 		err       error
 	}
@@ -759,7 +759,7 @@ func TestRouteHistoryDefaultLimit(t *testing.T) {
 		return m.delivered, m.err
 	}
 
-	// makeHashRing creates a HashRing with the given nodes and returns it.
+	// makeHashRing 创建包含给定节点的 HashRing 并返回。
 	func makeHashRing(nodeIDs ...string) *HashRing {
 		hr := NewHashRing(150)
 		for _, id := range nodeIDs {
@@ -773,12 +773,12 @@ func TestRouteHistoryDefaultLimit(t *testing.T) {
 		sg, _ := snowflake.New(1)
 		r := NewRouter(h, h, sg, nil, DefaultRouterConfig())
 
-		// Hash ring with gw-1, this is gw-1 → we own bob.
+		// 哈希环包含 gw-1；本节点是 gw-1 → bob 归我们所有。
 		hr := makeHashRing("gw-1", "gw-2")
 		r.SetHashRing(hr)
 		r.SetThisNodeID("gw-1")
 
-		// Target is locally connected.
+		// 目标已本地连接。
 		target := newTestClient(t, "bob", "Bob")
 		h.Register(context.Background(), target)
 
@@ -794,13 +794,13 @@ func TestRouteHistoryDefaultLimit(t *testing.T) {
 			Seq:      1,
 		})
 
-		// Target should receive the message locally.
+		// 目标应在本地收到消息。
 		delivered := readMessageFromChan(t, target.send)
 		if delivered.Content != "hello via hash ring" {
 			t.Errorf("expected content 'hello via hash ring', got '%s'", delivered.Content)
 		}
 
-		// Sender should receive ACK.
+		// 发送者应收到 ACK。
 		ack := readMessageFromChan(t, sender.send)
 		if ack.Cmd != proto.CmdAck {
 			t.Errorf("expected ACK, got cmd=%d", ack.Cmd)
@@ -815,7 +815,7 @@ func TestRouteHistoryDefaultLimit(t *testing.T) {
 		sg, _ := snowflake.New(1)
 		r := NewRouter(h, h, sg, nil, DefaultRouterConfig())
 
-		// Ring has only "gw-2" (not self) → all targets forward to gw-2.
+		// 哈希环只有 "gw-2"（不是自身）→ 所有目标转发到 gw-2。
 		hr := makeHashRing("gw-2")
 		r.SetHashRing(hr)
 		r.SetThisNodeID("gw-1")
@@ -823,7 +823,7 @@ func TestRouteHistoryDefaultLimit(t *testing.T) {
 		fw := &mockForwarder{delivered: true}
 		r.SetForwarder(fw)
 
-		// Bob is NOT registered locally.
+		// Bob 未在本地注册。
 		sender := newTestClient(t, "alice", "Alice")
 		r.Route(context.Background(), sender, &proto.Message{
 			Cmd:      proto.CmdChat,
@@ -836,7 +836,7 @@ func TestRouteHistoryDefaultLimit(t *testing.T) {
 			Seq:      2,
 		})
 
-		// Forwarder should have been called.
+		// 转发器应已被调用。
 		if len(fw.forwarded) != 1 {
 			t.Fatalf("expected 1 forwarded call, got %d", len(fw.forwarded))
 		}
@@ -847,13 +847,13 @@ func TestRouteHistoryDefaultLimit(t *testing.T) {
 			t.Errorf("forwarded wrong content: %s", fw.forwarded[0].Msg.Content)
 		}
 
-		// Sender should receive ACK.
+		// 发送者应收到 ACK。
 		ack := readMessageFromChan(t, sender.send)
 		if ack.Cmd != proto.CmdAck {
 			t.Errorf("expected ACK, got cmd=%d", ack.Cmd)
 		}
 
-		// No message stored in local offline store (peer handled it).
+		// 本地离线存储中无消息（对端已处理）。
 		offlineMsgs := h.DrainOffline(context.Background(), "bob")
 		if len(offlineMsgs) != 0 {
 			t.Errorf("expected 0 offline messages stored locally, got %d", len(offlineMsgs))
@@ -865,7 +865,7 @@ func TestRouteHistoryDefaultLimit(t *testing.T) {
 		sg, _ := snowflake.New(1)
 		r := NewRouter(h, h, sg, nil, DefaultRouterConfig())
 
-		// Ring has only "gw-1" (self) → all targets store offline locally.
+		// 哈希环只有 "gw-1"（自身）→ 所有目标在本地离线存储。
 		hr := makeHashRing("gw-1")
 		r.SetHashRing(hr)
 		r.SetThisNodeID("gw-1")
@@ -885,12 +885,12 @@ func TestRouteHistoryDefaultLimit(t *testing.T) {
 			Seq:      3,
 		})
 
-		// Forwarder should NOT have been called (this node owns everyone).
+		// 转发器不应被调用（本节点拥有所有用户）。
 		if len(fw.forwarded) != 0 {
 			t.Errorf("expected 0 forwarded calls, got %d", len(fw.forwarded))
 		}
 
-		// Message should be in local offline store.
+		// 消息应在本地离线存储中。
 		offlineMsgs := h.DrainOffline(context.Background(), "bob")
 		if len(offlineMsgs) != 1 {
 			t.Fatalf("expected 1 offline message, got %d", len(offlineMsgs))
@@ -899,7 +899,7 @@ func TestRouteHistoryDefaultLimit(t *testing.T) {
 			t.Errorf("wrong offline content: %s", offlineMsgs[0].Content)
 		}
 
-		// Sender should receive ACK.
+		// 发送者应收到 ACK。
 		ack := readMessageFromChan(t, sender.send)
 		if ack.Cmd != proto.CmdAck {
 			t.Errorf("expected ACK, got cmd=%d", ack.Cmd)
@@ -911,12 +911,12 @@ func TestRouteHistoryDefaultLimit(t *testing.T) {
 		sg, _ := snowflake.New(1)
 		r := NewRouter(h, h, sg, nil, DefaultRouterConfig())
 
-		// Ring has only "gw-2" (not self) → will attempt forward.
+		// 哈希环只有 "gw-2"（不是自身）→ 将尝试转发。
 		hr := makeHashRing("gw-2")
 		r.SetHashRing(hr)
 		r.SetThisNodeID("gw-1")
 
-		// Forwarder returns an error (simulate network failure).
+		// 转发器返回错误（模拟网络故障）。
 		fw := &mockForwarder{err: fmt.Errorf("connection refused")}
 		r.SetForwarder(fw)
 
@@ -932,12 +932,12 @@ func TestRouteHistoryDefaultLimit(t *testing.T) {
 			Seq:      4,
 		})
 
-		// Forwarder was called.
+		// 转发器已被调用。
 		if len(fw.forwarded) != 1 {
 			t.Fatalf("expected 1 forwarded call, got %d", len(fw.forwarded))
 		}
 
-		// Fallback: message stored in local offline store.
+		// 回退：消息存储在本地离线存储中。
 		offlineMsgs := h.DrainOffline(context.Background(), "bob")
 		if len(offlineMsgs) != 1 {
 			t.Fatalf("expected 1 fallback offline message, got %d", len(offlineMsgs))
@@ -946,14 +946,14 @@ func TestRouteHistoryDefaultLimit(t *testing.T) {
 			t.Errorf("wrong fallback content: %s", offlineMsgs[0].Content)
 		}
 
-		// Sender still receives ACK.
+		// 发送者仍收到 ACK。
 		ack := readMessageFromChan(t, sender.send)
 		if ack.Cmd != proto.CmdAck {
 			t.Errorf("expected ACK, got cmd=%d", ack.Cmd)
 		}
 	}
 
-// ---------- Group Chat ----------
+// ---------- 群聊 ----------
 
 func TestGroupChatFanout(t *testing.T) {
 	h := NewHub(100)
@@ -963,7 +963,7 @@ func TestGroupChatFanout(t *testing.T) {
 	r := NewRouter(h, h, sg, nil, DefaultRouterConfig())
 	r.SetGroupStore(gs)
 
-	// Create group and add members.
+	// 创建群组并添加成员。
 	ctx := context.Background()
 	g, err := gs.Create(ctx, "Test Group", "alice", nil)
 	if err != nil {
@@ -972,13 +972,13 @@ func TestGroupChatFanout(t *testing.T) {
 	gs.AddMember(ctx, g.ID, "bob")
 	gs.AddMember(ctx, g.ID, "carol")
 
-	// Register bob and carol as online.
+	// 将 bob 和 carol 注册为在线。
 	bob := newTestClient(t, "bob", "Bob")
 	carol := newTestClient(t, "carol", "Carol")
 	h.Register(ctx, bob)
 	h.Register(ctx, carol)
 
-	// Alice sends a group message.
+	// Alice 发送一条群组消息。
 	sender := newTestClient(t, "alice", "Alice")
 	r.Route(ctx, sender, &proto.Message{
 		Cmd:      proto.CmdChat,
@@ -991,7 +991,7 @@ func TestGroupChatFanout(t *testing.T) {
 		Seq:      1,
 	})
 
-	// Bob and carol should receive the message.
+	// Bob 和 carol 应收到该消息。
 	for _, c := range []*Client{bob, carol} {
 		msg := readMessageFromChan(t, c.send)
 		if msg.Content != "hello group" {
@@ -1002,12 +1002,12 @@ func TestGroupChatFanout(t *testing.T) {
 		}
 	}
 
-	// Alice should receive an ACK first (she has NeedAck=true), then nothing else.
+	// Alice 应先收到 ACK（她的 NeedAck=true），然后不再有其他内容。
 	ack := readMessageFromChan(t, sender.send)
 	if ack.Cmd != proto.CmdAck {
 		t.Errorf("expected ACK, got cmd=%d", ack.Cmd)
 	}
-	// Alice (sender) should NOT receive her own group message after the ACK.
+	// Alice（发送者）在 ACK 之后不应收到自己的群组消息。
 	assertChanEmpty(t, sender.send)
 }
 
@@ -1021,7 +1021,7 @@ func TestGroupChatOfflineMember(t *testing.T) {
 
 	ctx := context.Background()
 	g, _ := gs.Create(ctx, "Dev Team", "alice", nil)
-	gs.AddMember(ctx, g.ID, "bob") // bob is NOT registered → offline
+	gs.AddMember(ctx, g.ID, "bob") // bob 未注册 → 离线
 
 	sender := newTestClient(t, "alice", "Alice")
 	r.Route(ctx, sender, &proto.Message{
@@ -1034,7 +1034,7 @@ func TestGroupChatOfflineMember(t *testing.T) {
 		Seq:      1,
 	})
 
-	// Bob should have the message stored offline.
+	// Bob 的消息应存储在离线存储中。
 	offlineMsgs := h.DrainOffline(ctx, "bob")
 	if len(offlineMsgs) != 1 {
 		t.Fatalf("expected 1 offline message for bob, got %d", len(offlineMsgs))
@@ -1055,11 +1055,11 @@ func TestGroupChatSenderExcluded(t *testing.T) {
 	ctx := context.Background()
 	g, _ := gs.Create(ctx, "Solo Group", "alice", nil)
 
-	// Only alice is in the group. Register her.
+	// 群组中只有 alice。注册她。
 	alice := newTestClient(t, "alice", "Alice")
 	h.Register(ctx, alice)
 
-	// Alice sends a group message — she is the only member.
+	// Alice 发送群组消息 —— 她是唯一的成员。
 	r.Route(ctx, alice, &proto.Message{
 		Cmd:      proto.CmdChat,
 		From:     "alice",
@@ -1070,17 +1070,17 @@ func TestGroupChatSenderExcluded(t *testing.T) {
 		Seq:      1,
 	})
 
-	// Alice should NOT receive her own message (sender excluded).
+	// Alice 不应收到自己的消息（排除发送者）。
 	assertChanEmpty(t, alice.send)
 }
 
 func TestGroupChatNoGroupStore(t *testing.T) {
-	// When groupStore is nil, group messages fall back to single-chat behavior
-	// (treated as direct message to msg.To).
+	// 当 groupStore 为 nil 时，群组消息回退为单聊行为
+	// （视为发给 msg.To 的直接消息）。
 	h := NewHub(100)
 	sg, _ := snowflake.New(1)
 	r := NewRouter(h, h, sg, nil, DefaultRouterConfig())
-	// Do NOT call SetGroupStore — groupStore is nil.
+	// 不调用 SetGroupStore —— groupStore 为 nil。
 
 	target := newTestClient(t, "bob", "Bob")
 	sender := newTestClient(t, "alice", "Alice")
@@ -1096,7 +1096,7 @@ func TestGroupChatNoGroupStore(t *testing.T) {
 		Seq:      1,
 	})
 
-	// Falls back to single chat: bob receives the message.
+	// 回退为单聊：bob 收到消息。
 	msg := readMessageFromChan(t, target.send)
 	if msg.Content != "fallback to single" {
 		t.Errorf("expected 'fallback to single', got %q", msg.Content)
@@ -1113,7 +1113,7 @@ func TestGroupChatNonexistentGroup(t *testing.T) {
 
 	sender := newTestClient(t, "alice", "Alice")
 
-	// Send to a group that does not exist — should not panic.
+	// 向不存在的群组发送消息 —— 不应 panic。
 	r.Route(context.Background(), sender, &proto.Message{
 		Cmd:      proto.CmdChat,
 		From:     "alice",
@@ -1124,6 +1124,6 @@ func TestGroupChatNonexistentGroup(t *testing.T) {
 		Seq:      1,
 	})
 
-	// No message delivered, no panic — just verify we are still alive.
+	// 无消息投递，无 panic —— 只验证程序仍然存活。
 	assertChanEmpty(t, sender.send)
 }

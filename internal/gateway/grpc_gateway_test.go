@@ -11,8 +11,8 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 )
 
-// setupGrpcGatewayServer creates an in-process gRPC server with a bufconn listener,
-// returning a client connection and a cleanup function.
+// setupGrpcGatewayServer 使用 bufconn 监听器创建进程内 gRPC 服务器，
+// 返回客户端连接和清理函数。
 func setupGrpcGatewayServer(t *testing.T, clients ClientRegistry, offline OfflineStore) (*grpc.ClientConn, func()) {
 	t.Helper()
 
@@ -23,7 +23,7 @@ func setupGrpcGatewayServer(t *testing.T, clients ClientRegistry, offline Offlin
 
 	go func() {
 		if err := srv.Serve(lis); err != nil {
-			// srv.Stop() triggers this; not a real error.
+			// srv.Stop() 会触发该错误；不是真正的错误。
 			return
 		}
 	}()
@@ -50,7 +50,7 @@ func setupGrpcGatewayServer(t *testing.T, clients ClientRegistry, offline Offlin
 func TestGrpcForwardMessageDelivered(t *testing.T) {
 	h := NewHub(100)
 
-	// Register target client in hub.
+	// 在 hub 中注册目标客户端。
 	target := newTestClient(t, "bob", "Bob")
 	h.Register(context.Background(), target)
 
@@ -78,7 +78,7 @@ func TestGrpcForwardMessageDelivered(t *testing.T) {
 		t.Errorf("expected Delivered=true, got false: %s", resp.Error)
 	}
 
-	// Verify target received the message.
+	// 验证目标客户端收到了消息。
 	delivered := readMessageFromChan(t, target.send)
 	if delivered.Content != "hello from peer" {
 		t.Errorf("expected 'hello from peer', got '%s'", delivered.Content)
@@ -87,7 +87,7 @@ func TestGrpcForwardMessageDelivered(t *testing.T) {
 
 func TestGrpcForwardMessageOffline(t *testing.T) {
 	h := NewHub(100)
-	// No client registered → target is offline.
+	// 没有注册客户端 → 目标离线。
 
 	conn, cleanup := setupGrpcGatewayServer(t, h, h)
 	defer cleanup()
@@ -113,7 +113,7 @@ func TestGrpcForwardMessageOffline(t *testing.T) {
 		t.Error("expected Delivered=false for offline user")
 	}
 
-	// Verify message was stored in offline store.
+	// 验证消息已存储在离线存储中。
 	msgs := h.DrainOffline(context.Background(), "bob")
 	if len(msgs) != 1 {
 		t.Fatalf("expected 1 offline message, got %d", len(msgs))
@@ -172,7 +172,7 @@ func TestGrpcForwardMessageEmptyUID(t *testing.T) {
 func TestGrpcForwardMessageSendBufferFull(t *testing.T) {
 	h := NewHub(100)
 
-	// Create a target with a very small send buffer that's already full.
+	// 创建一个发送缓冲区极小且已满的目标客户端。
 	target := newTestSmallBufClient(t, "bob", "Bob", 0)
 	h.Register(context.Background(), target)
 
@@ -200,14 +200,14 @@ func TestGrpcForwardMessageSendBufferFull(t *testing.T) {
 		t.Error("expected Delivered=false, send buffer is full")
 	}
 
-	// Message should be stored offline as fallback.
+	// 消息应作为回退存储在离线存储中。
 	msgs := h.DrainOffline(context.Background(), "bob")
 	if len(msgs) != 1 {
 		t.Fatalf("expected 1 fallback offline message, got %d", len(msgs))
 	}
 }
 
-// newTestSmallBufClient creates a client with a channel of the given size (0 = full from start).
+// newTestSmallBufClient 创建一个指定通道大小的客户端（0 = 从一开始就满）。
 func newTestSmallBufClient(t *testing.T, uid, name string, bufSize int) *Client {
 	t.Helper()
 	return &Client{

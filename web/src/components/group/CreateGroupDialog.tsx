@@ -19,7 +19,7 @@ export default function CreateGroupDialog({ open, onClose }: CreateGroupDialogPr
   const { setGroups } = useContactStore();
   const { friends, setFriends } = useFriendStore();
 
-  // Load friend list when dialog opens.
+  // 对话框打开时加载好友列表。
   useEffect(() => {
     if (open && uid) {
       getFriendList()
@@ -54,7 +54,7 @@ export default function CreateGroupDialog({ open, onClose }: CreateGroupDialogPr
     try {
       const members = Array.from(selectedFriends);
       await createGroup(name.trim(), members);
-      // Refresh group list.
+      // 刷新群组列表。
       const data = await getGroupList();
       setGroups(data.groups);
       onClose();
@@ -85,7 +85,7 @@ export default function CreateGroupDialog({ open, onClose }: CreateGroupDialogPr
         </div>
 
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto space-y-4">
-          {/* Group name */}
+          {/* 群组名称 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">群组名称</label>
             <input
@@ -98,7 +98,7 @@ export default function CreateGroupDialog({ open, onClose }: CreateGroupDialogPr
             />
           </div>
 
-          {/* Friend selection */}
+          {/* 好友选择 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               邀请好友 <span className="text-gray-400 font-normal">（可选，{selectedFriends.size} 人已选）</span>

@@ -11,11 +11,11 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
-// mockMessageStore implements repo.MessageStore for testing the consumer flush logic.
+// mockMessageStore 实现 repo.MessageStore，用于测试消费者的刷新逻辑。
 type mockMessageStore struct {
 	mu      sync.Mutex
 	saved   []*proto.Message
-	saveErr error                    // non-nil to simulate store failure
+	saveErr error                    // 非 nil 时模拟存储故障
 	saveFn  func(msg *proto.Message) error
 }
 
@@ -76,25 +76,25 @@ func (m *mockMessageStore) savedMessages() []*proto.Message {
 
 var _ repo.MessageStore = (*mockMessageStore)(nil)
 
-// TestConsumerConfigDefaults validates default config values.
+// TestConsumerConfigDefaults 验证默认配置值。
 func TestConsumerConfigDefaults(t *testing.T) {
 	cfg := ConsumerConfig{
 		Brokers: []string{"localhost:9092"},
 		Topic:   "im.test.topic",
 		GroupID: "im-test",
 	}
-	_ = cfg // valid config
+	_ = cfg // 有效配置
 	t.Log("ConsumerConfig is valid")
 }
 
-// TestConsumerConstructorDoesNotPanic verifies NewConsumer
-// does not panic even with unreachable brokers (it just creates the reader).
+// TestConsumerConstructorDoesNotPanic 验证即使 broker 不可达
+// NewConsumer 也不会 panic（它只是创建 reader）。
 func TestConsumerConstructorDoesNotPanic(t *testing.T) {
 	consumer := NewConsumer(ConsumerConfig{
-		Brokers: []string{"localhost:19999"}, // unreachable
+		Brokers: []string{"localhost:19999"}, // 不可达
 		Topic:   "test.topic",
 		GroupID: "test-group",
-	}, nil) // nil store — flushAll will skip writes
+	}, nil) // nil store —— flushAll 将跳过写入
 
 	if consumer == nil {
 		t.Fatal("NewConsumer returned nil")
@@ -103,8 +103,8 @@ func TestConsumerConstructorDoesNotPanic(t *testing.T) {
 	t.Log("Consumer constructor does not panic")
 }
 
-// TestConsumerConstructorWithMockStore verifies NewConsumer
-// accepts a MessageStore interface (not just *repo.MySQLStore).
+// TestConsumerConstructorWithMockStore 验证 NewConsumer
+// 接受 MessageStore 接口（不仅是 *repo.MySQLStore）。
 func TestConsumerConstructorWithMockStore(t *testing.T) {
 	mock := &mockMessageStore{}
 	consumer := NewConsumer(ConsumerConfig{
@@ -122,7 +122,7 @@ func TestConsumerConstructorWithMockStore(t *testing.T) {
 	consumer.Close()
 }
 
-// TestConsumerFlushAllEmptyBuffer is a no-op when the buffer is empty.
+// TestConsumerFlushAllEmptyBuffer 在缓冲区为空时是一个空操作。
 func TestConsumerFlushAllEmptyBuffer(t *testing.T) {
 	mock := &mockMessageStore{}
 	consumer := NewConsumer(ConsumerConfig{
@@ -131,7 +131,7 @@ func TestConsumerFlushAllEmptyBuffer(t *testing.T) {
 		GroupID: "test-group",
 	}, mock)
 
-	// flushAll with empty buffer should not panic and should not write anything.
+	// 空缓冲区调用 flushAll 不应 panic，也不应写入任何内容。
 	consumer.flushAll()
 
 	if len(mock.savedMessages()) != 0 {
@@ -139,7 +139,7 @@ func TestConsumerFlushAllEmptyBuffer(t *testing.T) {
 	}
 }
 
-// TestConsumerFlushAllNilStore handles a nil MessageStore gracefully.
+// TestConsumerFlushAllNilStore 优雅地处理 nil 的 MessageStore。
 func TestConsumerFlushAllNilStore(t *testing.T) {
 	consumer := NewConsumer(ConsumerConfig{
 		Brokers: []string{"localhost:19999"},
@@ -147,7 +147,7 @@ func TestConsumerFlushAllNilStore(t *testing.T) {
 		GroupID: "test-group",
 	}, nil)
 
-	// Manually add a message to the buffer (simulating what Run does).
+	// 手动向缓冲区添加一条消息（模拟 Run 的行为）。
 	consumer.mu.Lock()
 	consumer.buffer = append(consumer.buffer, bufferedMsg{
 		msg: &proto.Message{MsgId: 1, Cmd: proto.CmdChat, Content: "hello"},
@@ -155,10 +155,10 @@ func TestConsumerFlushAllNilStore(t *testing.T) {
 	})
 	consumer.mu.Unlock()
 
-	// Should not panic — nil store path commits all offsets.
+	// 不应 panic —— nil store 路径会提交所有 offset。
 	consumer.flushAll()
 
-	// Buffer should be drained.
+	// 缓冲区应被清空。
 	consumer.mu.Lock()
 	if len(consumer.buffer) != 0 {
 		t.Errorf("expected empty buffer after flush, got %d", len(consumer.buffer))
@@ -166,7 +166,7 @@ func TestConsumerFlushAllNilStore(t *testing.T) {
 	consumer.mu.Unlock()
 }
 
-// TestConsumerFlushAllSavesMessages verifies flushAll writes to the store.
+// TestConsumerFlushAllSavesMessages 验证 flushAll 会写入存储。
 func TestConsumerFlushAllSavesMessages(t *testing.T) {
 	mock := &mockMessageStore{}
 	consumer := NewConsumer(ConsumerConfig{
@@ -175,7 +175,7 @@ func TestConsumerFlushAllSavesMessages(t *testing.T) {
 		GroupID: "test-group",
 	}, mock)
 
-	// Simulate buffering 3 messages.
+	// 模拟缓冲 3 条消息。
 	consumer.mu.Lock()
 	consumer.buffer = append(consumer.buffer,
 		bufferedMsg{msg: &proto.Message{MsgId: 1, Cmd: proto.CmdChat, Content: "a"}, km: kafka.Message{}},
@@ -195,12 +195,12 @@ func TestConsumerFlushAllSavesMessages(t *testing.T) {
 	}
 }
 
-// TestConsumerFlushAllPartialFailure continues saving after individual errors.
+// TestConsumerFlushAllPartialFailure 验证单个错误后仍继续保存。
 func TestConsumerFlushAllPartialFailure(t *testing.T) {
 	mock := &mockMessageStore{
 		saveFn: func(msg *proto.Message) error {
 			if msg.MsgId == 2 {
-				return context.DeadlineExceeded // simulate transient error
+				return context.DeadlineExceeded // 模拟瞬时错误
 			}
 			return nil
 		},
@@ -219,7 +219,7 @@ func TestConsumerFlushAllPartialFailure(t *testing.T) {
 	)
 	consumer.mu.Unlock()
 
-	// Should not panic — msg 2 failed but 1 and 3 succeed.
+	// 不应 panic —— msg 2 失败，但 1 和 3 成功。
 	consumer.flushAll()
 
 	saved := mock.savedMessages()
@@ -234,7 +234,7 @@ func TestConsumerFlushAllPartialFailure(t *testing.T) {
 	}
 }
 
-// TestConsumerBufferClearAfterFlush verifies the buffer is cleared.
+// TestConsumerBufferClearAfterFlush 验证缓冲区被清空。
 func TestConsumerBufferClearAfterFlush(t *testing.T) {
 	mock := &mockMessageStore{}
 	consumer := NewConsumer(ConsumerConfig{
@@ -243,7 +243,7 @@ func TestConsumerBufferClearAfterFlush(t *testing.T) {
 		GroupID: "test-group",
 	}, mock)
 
-	// Flush twice — second should be a no-op.
+	// 刷新两次 —— 第二次应为空操作。
 	consumer.mu.Lock()
 	consumer.buffer = append(consumer.buffer,
 		bufferedMsg{msg: &proto.Message{MsgId: 1}, km: kafka.Message{}},
@@ -255,14 +255,14 @@ func TestConsumerBufferClearAfterFlush(t *testing.T) {
 		t.Fatalf("first flush: expected 1 saved, got %d", len(mock.savedMessages()))
 	}
 
-	// Second flush should not save anything (buffer is empty).
+	// 第二次刷新不应保存任何内容（缓冲区为空）。
 	consumer.flushAll()
 	if len(mock.savedMessages()) != 1 {
 		t.Errorf("second flush: expected still 1 saved, got %d", len(mock.savedMessages()))
 	}
 }
 
-// TestConsumerConcurrentBufferAccess verifies mutex safety of buffer ops.
+// TestConsumerConcurrentBufferAccess 验证缓冲区操作的互斥锁安全性。
 func TestConsumerConcurrentBufferAccess(t *testing.T) {
 	mock := &mockMessageStore{}
 	consumer := NewConsumer(ConsumerConfig{
@@ -287,16 +287,16 @@ func TestConsumerConcurrentBufferAccess(t *testing.T) {
 		}(i)
 	}
 
-	// Meanwhile run flushAll repeatedly.
+	// 同时反复运行 flushAll。
 	for i := 0; i < 5; i++ {
 		consumer.flushAll()
 		time.Sleep(time.Millisecond)
 	}
 
 	wg.Wait()
-	consumer.flushAll() // final drain
+	consumer.flushAll() // 最终排空
 
-	// All 500 messages should be saved.
+	// 全部 500 条消息都应被保存。
 	saved := mock.savedMessages()
 	if len(saved) != 500 {
 		t.Errorf("expected 500 saved messages, got %d", len(saved))

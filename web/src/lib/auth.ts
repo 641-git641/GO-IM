@@ -1,5 +1,5 @@
 /**
- * Auth helpers: token storage and JWT utilities.
+ * 认证辅助函数:token 存储与 JWT 工具。
  */
 
 const TOKEN_KEY = 'im_token';
@@ -30,19 +30,19 @@ export function clearAuth(): void {
   sessionStorage.removeItem(USERNAME_KEY);
 }
 
-/** Check if the stored JWT is expired (simple client-side check) */
+/** 检查存储的 JWT 是否已过期(简单的客户端检查) */
 export function isTokenExpired(): boolean {
   const token = getToken();
   if (!token) return true;
 
   try {
-    // JWT payload is the second segment (base64url)
-    // JWT uses base64url (not standard base64): replace - → +, _ → /
+    // JWT 载荷是第二个分段 (base64url)
+    // JWT 使用 base64url(非标准 base64):将 - → +、_ → /
     const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
     const payload = JSON.parse(atob(base64));
-    const exp = payload.exp * 1000; // JWT exp is in seconds
+    const exp = payload.exp * 1000; // JWT exp 单位为秒
     return Date.now() >= exp;
   } catch {
-    return true; // unparseable token → treat as expired
+    return true; // 无法解析的 token → 视为已过期
   }
 }

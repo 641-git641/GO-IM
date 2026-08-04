@@ -20,13 +20,13 @@ const queryClient = new QueryClient({
   },
 });
 
-/** Persists WebSocket connection across route changes */
+/** 在路由切换期间保持 WebSocket 连接 */
 function WSProvider({ children }: { children: React.ReactNode }) {
   useWebSocket();
   return <>{children}</>;
 }
 
-/** Redirects to login if not authenticated */
+/** 未认证时重定向到登录页 */
 function AuthGate({ children }: { children: React.ReactNode }) {
   const isLoggedIn = useAuthStore((s) => s.isLoggedIn);
 

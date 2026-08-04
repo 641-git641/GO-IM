@@ -37,17 +37,17 @@ export default function ChatWindow({ peerId }: ChatWindowProps) {
   const [forwardMsg, setForwardMsg] = useState<ChatMessage | null>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // In-conversation search state
+  // 会话内搜索状态
   const [searchQuery, setSearchQuery] = useState('');
   const [currentMatch, setCurrentMatch] = useState(0);
   const matchIdsRef = useRef<string[]>([]);
 
-  // Watch typing state for current peer
+  // 监听当前会话对象的输入状态
   useEffect(() => {
     const info = typingUsers.get(peerId);
     if (info && info.until > Date.now() && info.uid !== uid) {
       setTypingUid(info.uid);
-      // Clear typing after timeout
+      // 超时后清除输入状态
       if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
       typingTimerRef.current = setTimeout(() => {
         setTypingUid(null);
@@ -64,25 +64,25 @@ export default function ChatWindow({ peerId }: ChatWindowProps) {
   const isGroup = peerId.startsWith('g_');
   const chatType = isGroup ? ChatType.Group : (conv?.chatType || ChatType.Single);
 
-  // Reset unread when viewing conversation
+  // 查看会话时重置未读
   useEffect(() => {
     resetUnread(peerId);
   }, [peerId, resetUnread]);
 
-  // Load history on mount
+  // 挂载时加载历史消息
   useEffect(() => {
     loadHistory(peerId, chatType);
   }, [peerId, chatType, loadHistory]);
 
-  // Request group info on mount for groups (so name resolves after refresh)
+  // 群聊挂载时请求群组信息(以便刷新后解析名称)
   useEffect(() => {
     if (isGroup) {
-      // Request GroupInfo for this group
+      // 请求该群组的 GroupInfo
       wsManager.send({
         seq: '0', msgId: '0', cmd: Cmd.GroupInfo, from: uid, to: peerId,
         chatType: ChatType.Group, msgType: MsgType.Text, content: '', timestamp: '0', needAck: false,
       });
-      // Also request GroupList to populate all groups in contact store
+      // 同时请求 GroupList 以填充联系人 store 中的全部群组
       wsManager.send({
         seq: '0', msgId: '0', cmd: Cmd.GroupList, from: uid, to: '',
         chatType: ChatType.Group, msgType: MsgType.Text, content: '', timestamp: '0', needAck: false,
@@ -90,16 +90,16 @@ export default function ChatWindow({ peerId }: ChatWindowProps) {
     }
   }, [isGroup, peerId, uid]);
 
-  // Get peer name: check conversation name, contactStore groups, then fallback to peerId
+  // 获取会话对象名称:先查会话名,再查 contactStore 群组,最后回退到 peerId
   const peerName = (() => {
     if (peerId.startsWith('g_')) {
-      // Try conversation name first (non-raw-ID names)
+      // 优先尝试会话名称(非原始 ID 的名称)
       if (conv?.name && conv.name !== peerId) return conv.name;
-      // Try contact store groups
+      // 尝试联系人 store 中的群组
       const contactGroups = useContactStore.getState().groups;
       const group = contactGroups.find(g => g.id === peerId);
       if (group?.name) return group.name;
-      // Try group details
+      // 尝试群组详细信息
       const detail = getGroupDetail(peerId);
       if (detail?.name) return detail.name;
       return peerId;
@@ -109,18 +109,18 @@ export default function ChatWindow({ peerId }: ChatWindowProps) {
 
   const isPeerOnline = !peerId.startsWith('g_') && onlineUsers.includes(peerId);
 
-  // Group members for @mention support
+  // 群组成员,用于 @提及 支持
   const groupMembers = useMemo(() => {
     if (!isGroup) return undefined;
     const detail = getGroupDetail(peerId);
     return detail?.members || [];
   }, [isGroup, peerId, groupDetails, getGroupDetail]);
 
-  // Open settings panel (group or friend) when gear icon is clicked
+  // 点击齿轮图标时打开设置面板(群组或好友)
   const handleSettingsClick = useCallback(() => {
     if (isGroup) {
       setGroupPanelOpen(true);
-      // Request group info via WebSocket
+      // 通过 WebSocket 请求群组信息
       wsManager.send({
         seq: '0',
         msgId: '0',
@@ -138,7 +138,7 @@ export default function ChatWindow({ peerId }: ChatWindowProps) {
     }
   }, [isGroup, uid, peerId]);
 
-  // Build group info for the panel
+  // 为面板构造群组信息
   const groupDetail = getGroupDetail(peerId);
   const groupInfo: GroupInfo | null = groupDetail
     ? groupDetail
@@ -155,7 +155,7 @@ export default function ChatWindow({ peerId }: ChatWindowProps) {
   const handleSendText = useCallback(
     (text: string) => {
       if (replyTo) {
-        // Embed reply metadata in content JSON
+        // 将回复元数据嵌入内容 JSON
         const replyContent = replyTo.content.length > 200
           ? replyTo.content.slice(0, 200) + '...'
           : replyTo.content;
@@ -250,11 +250,11 @@ export default function ChatWindow({ peerId }: ChatWindowProps) {
     navigate('/chat', { replace: true });
   }, [peerId, deleteConversation, navigate]);
 
-  // ---- In-conversation search ----
+  // ---- 会话内搜索 ----
 
   const messages = conv?.messages || [];
 
-  // Compute matching message IDs
+  // 计算匹配的消息 ID
   const matchIds = useMemo(() => {
     if (!searchQuery.trim()) return [];
     const q = searchQuery.toLowerCase();
@@ -263,10 +263,10 @@ export default function ChatWindow({ peerId }: ChatWindowProps) {
       .map((m) => m.msgId || m.seq);
   }, [messages, searchQuery]);
 
-  // Keep matchIdsRef in sync for callbacks
+  // 保持 matchIdsRef 与回调同步
   matchIdsRef.current = matchIds;
 
-  // Scroll to the current match
+  // 滚动到当前匹配项
   useEffect(() => {
     if (matchIds.length > 0 && currentMatch < matchIds.length) {
       const el = document.querySelector(`[data-msg-id="${matchIds[currentMatch]}"]`);
@@ -291,7 +291,7 @@ export default function ChatWindow({ peerId }: ChatWindowProps) {
     setCurrentMatch(0);
   }, []);
 
-  // Ctrl+F shortcut
+  // Ctrl+F 快捷键
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
@@ -320,7 +320,7 @@ export default function ChatWindow({ peerId }: ChatWindowProps) {
         isOnline={isPeerOnline}
         onSettingsClick={handleSettingsClick}
       />
-      {/* In-conversation search bar */}
+      {/* 会话内搜索栏 */}
       {searchQuery !== '' && (
         <ChatSearch
           query={searchQuery}
@@ -344,7 +344,7 @@ export default function ChatWindow({ peerId }: ChatWindowProps) {
         highlight={searchQuery || undefined}
         currentMatchId={searchQuery && matchIds.length > 0 ? matchIds[currentMatch] : undefined}
       />
-      {/* Typing indicator */}
+      {/* 输入中指示器 */}
       {typingUid && (
         <div className="px-4 py-1 bg-gray-50 dark:bg-gray-800 text-xs text-gray-500 dark:text-gray-400 italic border-t border-gray-100 dark:border-gray-800">
           {typingUid} 正在输入...
@@ -364,7 +364,7 @@ export default function ChatWindow({ peerId }: ChatWindowProps) {
         onCancelReply={handleCancelReply}
       />
 
-      {/* Group info side panel */}
+      {/* 群组信息侧边面板 */}
       {isGroup && groupInfo && (
         <GroupInfoPanel
           group={groupInfo}
@@ -375,7 +375,7 @@ export default function ChatWindow({ peerId }: ChatWindowProps) {
         />
       )}
 
-      {/* Friend settings side panel */}
+      {/* 好友设置侧边面板 */}
       {!isGroup && (
         <FriendInfoPanel
           peerId={peerId}
@@ -387,7 +387,7 @@ export default function ChatWindow({ peerId }: ChatWindowProps) {
         />
       )}
 
-      {/* Forward dialog */}
+      {/* 转发对话框 */}
       {forwardMsg && (
         <ForwardDialog
           message={forwardMsg}

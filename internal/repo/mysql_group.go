@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// GroupRow represents a group row from the database.
+// GroupRow 表示来自数据库的一条群组数据行。
 type GroupRow struct {
 	ID        string
 	Name      string
@@ -17,20 +17,20 @@ type GroupRow struct {
 	CreatedAt int64
 }
 
-// MySQLGroupStore implements group persistence backed by MySQL.
-// It operates on the groups and group_members tables created by MySQLStore.migrate().
+// MySQLGroupStore 基于 MySQL 实现群组持久化。
+// 它操作 MySQLStore.migrate() 创建的 groups 与 group_members 表。
 type MySQLGroupStore struct {
 	db   *sql.DB
-	dsID func() int64 // id generator (snowflake, called by the caller)
+	dsID func() int64 // ID 生成器（snowflake，由调用方提供）
 }
 
-// NewMySQLGroupStore creates a MySQLGroupStore using an existing database connection.
-// The idFn should return a unique int64 ID (e.g., from snowflake generator).
+// NewMySQLGroupStore 使用现有的数据库连接创建 MySQLGroupStore。
+// idFn 应返回唯一的 int64 ID（例如来自 snowflake 生成器）。
 func NewMySQLGroupStore(db *sql.DB, idFn func() int64) *MySQLGroupStore {
 	return &MySQLGroupStore{db: db, dsID: idFn}
 }
 
-// newGroupID generates a snowflake-based group ID.
+// newGroupID 生成基于 snowflake 的群组 ID。
 func (s *MySQLGroupStore) newGroupID() string {
 	if s.dsID != nil {
 		return fmt.Sprintf("g_%d", s.dsID())
@@ -38,8 +38,8 @@ func (s *MySQLGroupStore) newGroupID() string {
 	return fmt.Sprintf("g_%d", time.Now().UnixNano())
 }
 
-// CreateGroup creates a new group and adds the owner and initial members.
-// Returns the created group row.
+// CreateGroup 创建一个新群组并添加群主与初始成员。
+// 返回创建的群组数据行。
 func (s *MySQLGroupStore) CreateGroup(ctx context.Context, name, ownerUID string, members []string) (*GroupRow, error) {
 	id := s.newGroupID()
 	now := time.Now().UnixMilli()
@@ -58,7 +58,7 @@ func (s *MySQLGroupStore) CreateGroup(ctx context.Context, name, ownerUID string
 		return nil, fmt.Errorf("insert group: %w", err)
 	}
 
-	// Insert owner as first member.
+	// 将群主作为第一位成员插入。
 	_, err = tx.ExecContext(ctx,
 		"INSERT INTO group_members (group_id, uid, joined_at) VALUES (?, ?, ?)",
 		id, ownerUID, now,
@@ -67,7 +67,7 @@ func (s *MySQLGroupStore) CreateGroup(ctx context.Context, name, ownerUID string
 		return nil, fmt.Errorf("insert owner member: %w", err)
 	}
 
-	// Insert initial members (excluding owner and empty strings).
+	// 插入初始成员（排除群主与空字符串）。
 	for _, uid := range members {
 		if uid == "" || uid == ownerUID {
 			continue
@@ -89,7 +89,7 @@ func (s *MySQLGroupStore) CreateGroup(ctx context.Context, name, ownerUID string
 	return &GroupRow{ID: id, Name: name, OwnerUID: ownerUID, CreatedAt: now}, nil
 }
 
-// AddMember adds a user to a group. Returns a sentinel error on failure.
+// AddMember 将用户添加到群组。失败时返回哨兵错误。
 func (s *MySQLGroupStore) AddMember(ctx context.Context, groupID, uid string) error {
 	var exists int
 	err := s.db.QueryRowContext(ctx, "SELECT COUNT(1) FROM `groups` WHERE id = ?", groupID).Scan(&exists)
@@ -115,8 +115,8 @@ func (s *MySQLGroupStore) AddMember(ctx context.Context, groupID, uid string) er
 	return nil
 }
 
-// RemoveMember removes a user from a group. If the group becomes empty, it is deleted.
-// Returns whether the group was deleted, and any error.
+// RemoveMember 将用户从群组中移除。如果群组变空，则删除该群组。
+// 返回群组是否被删除以及任何错误。
 func (s *MySQLGroupStore) RemoveMember(ctx context.Context, groupID, uid string) (deleted bool, err error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -167,7 +167,7 @@ func (s *MySQLGroupStore) RemoveMember(ctx context.Context, groupID, uid string)
 	return deleted, nil
 }
 
-// GetMembers returns the list of member UIDs for a group.
+// GetMembers 返回群组成员的 UID 列表。
 func (s *MySQLGroupStore) GetMembers(ctx context.Context, groupID string) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx,
 		"SELECT uid FROM group_members WHERE group_id = ? ORDER BY joined_at ASC", groupID,
@@ -203,7 +203,7 @@ func (s *MySQLGroupStore) GetMembers(ctx context.Context, groupID string) ([]str
 	return members, nil
 }
 
-// GetGroup returns a group row by ID.
+// GetGroup 按 ID 返回群组数据行。
 func (s *MySQLGroupStore) GetGroup(ctx context.Context, groupID string) (*GroupRow, error) {
 	g := &GroupRow{}
 	err := s.db.QueryRowContext(ctx,
@@ -218,7 +218,7 @@ func (s *MySQLGroupStore) GetGroup(ctx context.Context, groupID string) (*GroupR
 	return g, nil
 }
 
-// ListGroups returns all groups the user is a member of.
+// ListGroups 返回用户所属的全部群组。
 func (s *MySQLGroupStore) ListGroups(ctx context.Context, uid string) ([]*GroupRow, error) {
 	rows, err := s.db.QueryContext(ctx,
 		"SELECT g.id, g.name, g.owner_uid, g.created_at "+
@@ -250,7 +250,7 @@ func (s *MySQLGroupStore) ListGroups(ctx context.Context, uid string) ([]*GroupR
 	return groups, nil
 }
 
-// IsMember returns true if the user is a member of the group.
+// IsMember 如果用户是群组成员则返回 true。
 func (s *MySQLGroupStore) IsMember(ctx context.Context, groupID, uid string) bool {
 	var count int
 	err := s.db.QueryRowContext(ctx,
@@ -260,7 +260,7 @@ func (s *MySQLGroupStore) IsMember(ctx context.Context, groupID, uid string) boo
 	return err == nil && count > 0
 }
 
-// UpdateName changes a group's display name. Returns a sentinel error on failure.
+// UpdateName 修改群组的显示名称。失败时返回哨兵错误。
 func (s *MySQLGroupStore) UpdateName(ctx context.Context, groupID, newName string) error {
 	result, err := s.db.ExecContext(ctx,
 		"UPDATE `groups` SET name = ? WHERE id = ?", newName, groupID,
@@ -275,7 +275,7 @@ func (s *MySQLGroupStore) UpdateName(ctx context.Context, groupID, newName strin
 	return nil
 }
 
-// TransferOwnership transfers group ownership from one member to another.
+// TransferOwnership 将群主所有权从一个成员转移到另一个成员。
 func (s *MySQLGroupStore) TransferOwnership(ctx context.Context, groupID, fromUID, toUID string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -318,8 +318,8 @@ func (s *MySQLGroupStore) TransferOwnership(ctx context.Context, groupID, fromUI
 	return tx.Commit()
 }
 
-// GetMembersForGroup returns member UIDs with their details (same as GetMembers but
-// returns the group row too, used by callers that need both).
+// GetMembersForGroup 返回成员 UID 及其详细信息（与 GetMembers 相同，但
+// 同时返回群组数据行，供同时需要两者的调用方使用）。
 func (s *MySQLGroupStore) GetMembersForGroup(ctx context.Context, groupID string) (group *GroupRow, members []string, err error) {
 	group, err = s.GetGroup(ctx, groupID)
 	if err != nil {
@@ -332,7 +332,7 @@ func (s *MySQLGroupStore) GetMembersForGroup(ctx context.Context, groupID string
 	return group, members, nil
 }
 
-// Sentinel errors for group operations. Shared by MySQL and in-memory implementations.
+// 群组操作的哨兵错误。由 MySQL 与内存实现共用。
 var (
 	ErrGroupNotFound = fmt.Errorf("group not found")
 	ErrNotOwner      = fmt.Errorf("only the group owner can perform this action")
@@ -340,7 +340,7 @@ var (
 	ErrNotMember     = fmt.Errorf("user is not a member of this group")
 )
 
-// isMySQLDuplicate checks whether the error is MySQL error 1062 (duplicate entry).
+// isMySQLDuplicate 检查错误是否为 MySQL 错误 1062（重复条目）。
 func isMySQLDuplicate(err error) bool {
 	if err == nil {
 		return false

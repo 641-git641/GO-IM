@@ -5,43 +5,43 @@ import (
 	"sync"
 )
 
-// UnreadTracker tracks per-user unread message counts from each peer.
-// It is safe for concurrent use.
+// UnreadTracker 跟踪每个用户从各会话收到的未读消息数。
+// 可安全地并发使用。
 type UnreadTracker interface {
-	// Increment adds 1 to the unread count that toUID has from fromUID.
-	// Self-increments (toUID == fromUID) are silently ignored.
+	// Increment 将 toUID 从 fromUID 收到的未读计数加 1。
+	// 自增(toUID == fromUID)会被静默忽略。
 	Increment(ctx context.Context, toUID, fromUID string)
 
-	// MarkRead clears the unread count that readerUID has from peerUID.
-	// Idempotent: if the count is already zero or the reader has no entries, this is a no-op.
+	// MarkRead 清除 readerUID 从 peerUID 收到的未读计数。
+	// 幂等:如果计数已为零或该用户没有记录,则为无操作。
 	MarkRead(ctx context.Context, readerUID, peerUID string)
 
-	// GetCounts returns all per-peer unread counts for uid.
-	// Returns an empty map (not nil) when there are no unread messages.
+	// GetCounts 返回 uid 的所有会话未读计数。
+	// 没有未读消息时返回空映射(而非 nil)。
 	GetCounts(ctx context.Context, uid string) map[string]int64
 
-	// GetCount returns the unread count for uid from a specific peerUID.
-	// Returns 0 if the uid has never received messages from peerUID.
+	// GetCount 返回 uid 从指定 peerUID 收到的未读计数。
+	// 如果 uid 从未收到过 peerUID 的消息,则返回 0。
 	GetCount(ctx context.Context, uid, peerUID string) int64
 }
 
-// InMemoryUnreadTracker is an in-memory implementation of UnreadTracker.
+// InMemoryUnreadTracker 是 UnreadTracker 的内存实现。
 type InMemoryUnreadTracker struct {
 	mu     sync.RWMutex
-	counts map[string]map[string]int64 // uid -> {peerUID -> unread count}
+	counts map[string]map[string]int64 // uid -> {peerUID -> 未读计数}
 }
 
-// NewInMemoryUnreadTracker creates a new InMemoryUnreadTracker.
+// NewInMemoryUnreadTracker 创建一个新的 InMemoryUnreadTracker。
 func NewInMemoryUnreadTracker() *InMemoryUnreadTracker {
 	return &InMemoryUnreadTracker{
 		counts: make(map[string]map[string]int64),
 	}
 }
 
-// Increment adds 1 to the unread count that toUID has from fromUID.
+// Increment 将 toUID 从 fromUID 收到的未读计数加 1。
 func (t *InMemoryUnreadTracker) Increment(_ context.Context, toUID, fromUID string) {
 	if toUID == fromUID {
-		return // self-messages do not create unread counts
+		return // 自己发给自己的消息不产生未读计数
 	}
 
 	t.mu.Lock()
@@ -55,24 +55,24 @@ func (t *InMemoryUnreadTracker) Increment(_ context.Context, toUID, fromUID stri
 	inner[fromUID]++
 }
 
-// MarkRead clears the unread count that readerUID has from peerUID.
+// MarkRead 清除 readerUID 从 peerUID 收到的未读计数。
 func (t *InMemoryUnreadTracker) MarkRead(_ context.Context, readerUID, peerUID string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	inner, ok := t.counts[readerUID]
 	if !ok {
-		return // nothing to clear
+		return // 没有可清除的记录
 	}
 	delete(inner, peerUID)
 
-	// Clean up outer map entry if no unread counts remain for this reader.
+	// 如果该用户已无未读计数,则清理外层映射条目。
 	if len(inner) == 0 {
 		delete(t.counts, readerUID)
 	}
 }
 
-// GetCounts returns all per-peer unread counts for uid.
+// GetCounts 返回 uid 的所有会话未读计数。
 func (t *InMemoryUnreadTracker) GetCounts(_ context.Context, uid string) map[string]int64 {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
@@ -82,7 +82,7 @@ func (t *InMemoryUnreadTracker) GetCounts(_ context.Context, uid string) map[str
 		return map[string]int64{}
 	}
 
-	// Return a copy to avoid data races with concurrent modifications.
+	// 返回副本,避免与并发修改产生数据竞争。
 	result := make(map[string]int64, len(inner))
 	for k, v := range inner {
 		result[k] = v
@@ -90,7 +90,7 @@ func (t *InMemoryUnreadTracker) GetCounts(_ context.Context, uid string) map[str
 	return result
 }
 
-// GetCount returns the unread count for uid from a specific peerUID.
+// GetCount 返回 uid 从指定 peerUID 收到的未读计数。
 func (t *InMemoryUnreadTracker) GetCount(_ context.Context, uid, peerUID string) int64 {
 	t.mu.RLock()
 	defer t.mu.RUnlock()

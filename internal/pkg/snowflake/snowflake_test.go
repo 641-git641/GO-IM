@@ -56,7 +56,7 @@ func TestUniqueness(t *testing.T) {
 			for j := 0; j < perRoutine; j++ {
 				id := g.Next()
 				if id == 0 {
-					// Clock rollback detected — skip in test
+					// 检测到时钟回拨 —— 测试中跳过
 					continue
 				}
 				mu.Lock()
@@ -71,7 +71,7 @@ func TestUniqueness(t *testing.T) {
 	wg.Wait()
 
 	total := len(ids)
-	if total < goroutines*perRoutine-1 { // allow a few zero returns
+	if total < goroutines*perRoutine-1 { // 允许少量返回 0 的情况
 		t.Logf("generated %d unique IDs (target: %d)", total, goroutines*perRoutine)
 	}
 }
@@ -86,7 +86,7 @@ func TestMonotonic(t *testing.T) {
 	for i := 0; i < 10_000; i++ {
 		id := g.Next()
 		if id == 0 {
-			// Skip clock rollback returns
+			// 跳过时钟回拨导致的返回值
 			t.Logf("Next() returned 0 at iteration %d (clock rollback)", i)
 			continue
 		}
@@ -101,7 +101,7 @@ func TestWorkerIDPrefix(t *testing.T) {
 	g1, _ := New(1)
 	g2, _ := New(2)
 
-	// Generate enough IDs to ensure we have valid ones
+	// 生成足够的 ID 以确保有有效值
 	var id1, id2 int64
 	for i := 0; i < 100; i++ {
 		id1 = g1.Next()
@@ -120,7 +120,7 @@ func TestWorkerIDPrefix(t *testing.T) {
 		t.Skip("clock rollback prevented generating test IDs")
 	}
 
-	// Extract the worker ID bits
+	// 提取 worker ID 位
 	mask := int64((1 << workerBits) - 1)
 	wid1 := (id1 >> workerShift) & mask
 	wid2 := (id2 >> workerShift) & mask
@@ -162,7 +162,7 @@ func TestExtractTimestamp(t *testing.T) {
 
 func TestSequenceOverflow(t *testing.T) {
 	g, _ := New(1)
-	g.sequence = sequenceMax // force overflow on next call
+	g.sequence = sequenceMax // 强制下一次调用时溢出
 	g.lastStamp = time.Now().UnixMilli()
 
 	var id1, id2 int64
@@ -187,7 +187,7 @@ func TestSequenceOverflow(t *testing.T) {
 		t.Errorf("expected id1 < id2 after sequence overflow: id1=%d, id2=%d", id1, id2)
 	}
 
-	// Ensure timestamps differ (sequence exhaustion forces new millisecond)
+	// 确保时间戳不同（序列耗尽会强制使用新的毫秒）
 	ts1 := (id1 >> timestampShift)
 	ts2 := (id2 >> timestampShift)
 	if ts1 > ts2 {

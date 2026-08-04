@@ -10,19 +10,19 @@ import (
 	"github.com/im/internal/pkg/snowflake"
 )
 
-// Group represents a chat group with its members.
+// Group 表示一个聊天群及其成员。
 type Group struct {
-	ID        string          `json:"id"`         // e.g. "g_123456"
-	Name      string          `json:"name"`       // human-readable group name
-	OwnerUID  string          `json:"owner_uid"`  // creator/owner
-	Members   map[string]bool `json:"members"`    // uid → true (includes owner)
-	CreatedAt int64           `json:"created_at"` // unix millis
+	ID        string          `json:"id"`         // 例如 "g_123456"
+	Name      string          `json:"name"`       // 人类可读的群名称
+	OwnerUID  string          `json:"owner_uid"`  // 创建者/群主
+	Members   map[string]bool `json:"members"`    // uid → true(包含群主)
+	CreatedAt int64           `json:"created_at"` // unix 毫秒时间戳
 }
 
-// GroupStore manages group persistence. InMemoryGroupStore is the default
-// implementation; MySQLGroupStore provides a MySQL-backed alternative.
+// GroupStore 管理群的持久化。InMemoryGroupStore 是默认实现;
+// MySQLGroupStore 提供基于 MySQL 的替代实现。
 type GroupStore interface {
-	// Create creates a new group and adds the owner + optional initial members.
+	// Create 创建新群并添加群主及可选的初始成员。
 	Create(ctx context.Context, name, ownerUID string, members []string) (*Group, error)
 	AddMember(ctx context.Context, groupID, uid string) error
 	RemoveMember(ctx context.Context, groupID, uid string) error
@@ -34,7 +34,7 @@ type GroupStore interface {
 	TransferOwnership(ctx context.Context, groupID, fromUID, toUID string) error
 }
 
-// Sentinel errors for group operations.
+// 群操作的哨兵错误。
 var (
 	ErrGroupNotFound  = errors.New("group not found")
 	ErrNotOwner       = errors.New("only the group owner can perform this action")
@@ -43,16 +43,16 @@ var (
 	ErrGroupIDExists  = errors.New("group ID already exists")
 )
 
-// InMemoryGroupStore implements GroupStore with an in-memory map.
-// This is the MVP implementation; group state is lost on restart.
+// InMemoryGroupStore 用内存映射实现 GroupStore。
+// 这是 MVP 实现;重启后群状态丢失。
 type InMemoryGroupStore struct {
 	mu     sync.RWMutex
 	groups map[string]*Group // groupID → Group
 	snow   *snowflake.Generator
 }
 
-// NewInMemoryGroupStore creates an InMemoryGroupStore with a snowflake generator
-// for group ID assignment.
+// NewInMemoryGroupStore 创建一个 InMemoryGroupStore,使用 snowflake 生成器
+// 分配群 ID。
 func NewInMemoryGroupStore(snow *snowflake.Generator) *InMemoryGroupStore {
 	return &InMemoryGroupStore{
 		groups: make(map[string]*Group),
@@ -60,12 +60,12 @@ func NewInMemoryGroupStore(snow *snowflake.Generator) *InMemoryGroupStore {
 	}
 }
 
-// newGroupID generates a snowflake-based group ID.
+// newGroupID 生成基于 snowflake 的群 ID。
 func (s *InMemoryGroupStore) newGroupID() string {
 	return fmt.Sprintf("g_%d", s.snow.Next())
 }
 
-// Create creates a new group and adds the owner and initial members.
+// Create 创建新群并添加群主和初始成员。
 func (s *InMemoryGroupStore) Create(ctx context.Context, name, ownerUID string, members []string) (*Group, error) {
 	id := s.newGroupID()
 	memberMap := map[string]bool{ownerUID: true}
@@ -83,7 +83,7 @@ func (s *InMemoryGroupStore) Create(ctx context.Context, name, ownerUID string, 
 	}
 
 	s.mu.Lock()
-	// Guard against ID collision (should be impossible with snowflake, but be safe).
+	// 防止 ID 冲突(使用 snowflake 几乎不可能,但以防万一)。
 	if _, exists := s.groups[id]; exists {
 		s.mu.Unlock()
 		return nil, ErrGroupIDExists
@@ -94,7 +94,7 @@ func (s *InMemoryGroupStore) Create(ctx context.Context, name, ownerUID string, 
 	return g, nil
 }
 
-// AddMember adds a user to a group. Returns an error if the user is already a member.
+// AddMember 将用户加入群。如果用户已是成员则返回错误。
 func (s *InMemoryGroupStore) AddMember(ctx context.Context, groupID, uid string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -110,7 +110,7 @@ func (s *InMemoryGroupStore) AddMember(ctx context.Context, groupID, uid string)
 	return nil
 }
 
-// RemoveMember removes a user from a group. If the group becomes empty, it is deleted.
+// RemoveMember 将用户移出群。如果群变为空,则删除该群。
 func (s *InMemoryGroupStore) RemoveMember(ctx context.Context, groupID, uid string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -124,14 +124,14 @@ func (s *InMemoryGroupStore) RemoveMember(ctx context.Context, groupID, uid stri
 	}
 	delete(g.Members, uid)
 
-	// Delete empty groups automatically.
+	// 自动删除空群。
 	if len(g.Members) == 0 {
 		delete(s.groups, groupID)
 	}
 	return nil
 }
 
-// GetMembers returns the list of member UIDs for a group.
+// GetMembers 返回群的成员 UID 列表。
 func (s *InMemoryGroupStore) GetMembers(ctx context.Context, groupID string) ([]string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -147,7 +147,7 @@ func (s *InMemoryGroupStore) GetMembers(ctx context.Context, groupID string) ([]
 	return members, nil
 }
 
-// IsMember returns true if the user is a member of the group.
+// IsMember 如果用户是该群成员则返回 true。
 func (s *InMemoryGroupStore) IsMember(ctx context.Context, groupID, uid string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -159,7 +159,7 @@ func (s *InMemoryGroupStore) IsMember(ctx context.Context, groupID, uid string) 
 	return g.Members[uid]
 }
 
-// GetUserGroups returns all groups the user is a member of.
+// GetUserGroups 返回用户所属的所有群。
 func (s *InMemoryGroupStore) GetUserGroups(ctx context.Context, uid string) ([]*Group, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -173,7 +173,7 @@ func (s *InMemoryGroupStore) GetUserGroups(ctx context.Context, uid string) ([]*
 	return result, nil
 }
 
-// Get returns a group by ID, or nil if not found.
+// Get 按 ID 返回群,未找到时返回 nil。
 func (s *InMemoryGroupStore) Get(ctx context.Context, groupID string) (*Group, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -185,7 +185,7 @@ func (s *InMemoryGroupStore) Get(ctx context.Context, groupID string) (*Group, e
 	return g, nil
 }
 
-// UpdateName changes the group's display name.
+// UpdateName 修改群的显示名称。
 func (s *InMemoryGroupStore) UpdateName(ctx context.Context, groupID, newName string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -198,7 +198,7 @@ func (s *InMemoryGroupStore) UpdateName(ctx context.Context, groupID, newName st
 	return nil
 }
 
-// TransferOwnership transfers group ownership from one member to another.
+// TransferOwnership 将群所有权从一个成员转给另一个成员。
 func (s *InMemoryGroupStore) TransferOwnership(ctx context.Context, groupID, fromUID, toUID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

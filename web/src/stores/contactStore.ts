@@ -4,7 +4,7 @@ import type { GroupInfo, GroupListItem } from '@/types';
 interface ContactState {
   onlineUsers: string[];
   groups: GroupListItem[];
-  /** Detailed group info cache (keyed by group ID), used by GroupInfoPanel */
+  /** 群组详细信息缓存(以群组 ID 为键),供 GroupInfoPanel 使用 */
   groupDetails: Map<string, GroupInfo>;
 
   setOnlineUsers: (users: string[]) => void;

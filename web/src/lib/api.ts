@@ -1,5 +1,5 @@
 /**
- * HTTP API client for REST endpoints.
+ * REST 接口的 HTTP API 客户端。
  */
 
 import type { LoginResponse, User, GroupInfo, GroupListItem, UploadResponse, SearchResponse, SearchParams, AdminStats, AdminUsersResponse, AdminBrowseResponse } from '@/types';
@@ -8,7 +8,7 @@ import { getToken, getStoredUid } from './auth';
 type RequestMethod = 'GET' | 'POST';
 
 function getAuthParams(): URLSearchParams {
-  // Must match the keys defined in auth.ts (im_uid, im_token — underscores).
+  // 必须与 auth.ts 中定义的键一致 (im_uid、im_token —— 下划线)。
   const uid = getStoredUid() || '';
   const token = getToken() || '';
   return new URLSearchParams({ uid, token });
@@ -21,23 +21,23 @@ async function request<T>(
 ): Promise<T> {
   const headers: Record<string, string> = {};
 
-  // Attach auth params (uid + token) to every request.
+  // 为每个请求附加认证参数 (uid + token)。
   const authParams = getAuthParams();
   let url = path;
   if (method === 'GET') {
-    // Append auth to query string.
+    // 将认证参数附加到查询字符串。
     const sep = path.includes('?') ? '&' : '?';
     url = path + sep + authParams.toString();
   } else if (body instanceof URLSearchParams) {
-    // Merge auth into the form body.
+    // 将认证参数合并进表单体。
     authParams.forEach((value, key) => { if (value) body.set(key, value); });
   }
-  // FormData: auth is NOT injected — callers must pass uid/token manually.
+  // FormData:不注入认证参数 —— 调用方必须手动传入 uid/token。
 
   if (body instanceof URLSearchParams) {
     headers['Content-Type'] = 'application/x-www-form-urlencoded';
   }
-  // FormData sets its own Content-Type with boundary
+  // FormData 会自带带 boundary 的 Content-Type
 
   const res = await fetch(url, {
     method,
@@ -53,7 +53,7 @@ async function request<T>(
   return res.json();
 }
 
-// ---- Auth ----
+// ---- 认证 ----
 
 export async function login(uid: string, username?: string, password?: string): Promise<LoginResponse> {
   const params = new URLSearchParams({ uid });
@@ -69,11 +69,11 @@ export async function register(uid: string, username: string, password: string):
 
 export async function changePassword(oldPassword: string, newPassword: string): Promise<{ status: string }> {
   const params = new URLSearchParams({ old_password: oldPassword, new_password: newPassword });
-  // request() auto-injects uid + token — backend validates JWT via authenticateRequest
+  // request() 自动注入 uid + token —— 后端通过 authenticateRequest 校验 JWT
   return request('/change-password', 'POST', params);
 }
 
-// ---- Users ----
+// ---- 用户 ----
 
 export async function getOnlineUsers(): Promise<{ count: number; users: string[] }> {
   return request('/online');
@@ -88,7 +88,7 @@ export async function getHealth(): Promise<{
   return request('/health');
 }
 
-// ---- Groups ----
+// ---- 群组 ----
 
 export async function createGroup(name: string, members?: string[]): Promise<GroupInfo> {
   const params = new URLSearchParams({ name });
@@ -136,7 +136,7 @@ export async function getGroupList(): Promise<{ groups: GroupListItem[] }> {
   return request('/group/list');
 }
 
-// ---- Files ----
+// ---- 文件 ----
 
 export async function uploadFile(
   file: File,
@@ -181,7 +181,7 @@ export function getFileURL(fileId: string, uid: string, token: string, thumb = f
   return `/file?${params.toString()}`;
 }
 
-// ---- Search ----
+// ---- 搜索 ----
 
 export async function searchMessages(
   params: SearchParams,
@@ -195,11 +195,11 @@ export async function searchMessages(
   if (params.cursor) sp.set('cursor', String(params.cursor));
   if (params.limit) sp.set('limit', String(params.limit));
 
-  // request() auto-injects uid + token via getAuthParams()
+  // request() 通过 getAuthParams() 自动注入 uid + token
   return request(`/search?${sp.toString()}`);
 }
 
-// ---- Friends ----
+// ---- 好友 ----
 
 export interface FriendListResponse {
   uid: string;
@@ -231,13 +231,13 @@ export async function getFriendList(): Promise<FriendListResponse> {
   return request('/friend/list');
 }
 
-// ---- Unread ----
+// ---- 未读 ----
 
 export async function getUnreadCounts(): Promise<{ uid: string; counts: Record<string, number> }> {
   return request('/unread');
 }
 
-// ---- Admin ----
+// ---- 管理 ----
 
 function adminParams(uid: string, token: string): URLSearchParams {
   return new URLSearchParams({ uid, token });

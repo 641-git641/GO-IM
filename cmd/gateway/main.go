@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	_ "net/http/pprof" // register pprof handlers on DefaultServeMux
+	_ "net/http/pprof" // 在 DefaultServeMux 上注册 pprof 处理器
 	"os"
 	"os/signal"
 	"syscall"
@@ -21,23 +21,23 @@ import (
 	"google.golang.org/grpc"
 )
 
-// App holds the initialized application components.
+// App 持有已初始化的应用组件。
 type App struct {
 	Hub           gateway.ClientRegistry
 	Server        *gateway.Server
 	Config        *configs.Config
-	redisClient   *redis.Client           // nil if Redis disabled or unavailable
-	mysqlStore    *repo.MySQLStore        // nil if MySQL disabled
-	kafkaProducer *mq.Producer           // nil if Kafka disabled
-	logicClient   *gateway.LogicClient    // nil if Logic gRPC disabled
-	grpcServer    *grpc.Server            // nil when gRPC disabled (single-node mode)
-	grpcForwarder *gateway.GrpcForwarder  // nil when multi-gateway disabled
-	clusterMgr    *gateway.ClusterManager // nil when multi-gateway disabled
-	pprofServer   *http.Server            // nil when pprof disabled
-	router        *gateway.Router         // for cleanup (dedup cache, rate limiter)
+	redisClient   *redis.Client           // Redis 禁用或不可用时为 nil
+	mysqlStore    *repo.MySQLStore        // MySQL 禁用时为 nil
+	kafkaProducer *mq.Producer           // Kafka 禁用时为 nil
+	logicClient   *gateway.LogicClient    // Logic gRPC 禁用时为 nil
+	grpcServer    *grpc.Server            // gRPC 禁用（单节点模式）时为 nil
+	grpcForwarder *gateway.GrpcForwarder  // 多网关禁用时为 nil
+	clusterMgr    *gateway.ClusterManager // 多网关禁用时为 nil
+	pprofServer   *http.Server            // pprof 禁用时为 nil
+	router        *gateway.Router         // 用于清理（去重缓存、限流器）
 }
 
-// NewApp initializes all app components from configuration.
+// NewApp 根据配置初始化所有应用组件。
 func NewApp(cfg *configs.Config) (*App, error) {
 	snow, err := snowflake.New(cfg.Snow.WorkerID)
 	if err != nil {
@@ -46,7 +46,7 @@ func NewApp(cfg *configs.Config) (*App, error) {
 	jwtMgr := jwt.New(cfg.JWT.Secret, time.Duration(cfg.JWT.Expiration))
 	hub := gateway.NewHub(cfg.Gateway.Conn.OfflineMaxSize)
 
-	// Wire offline store: try Redis, fall back to in-memory Hub.
+	// 组装离线存储：先尝试 Redis，失败则回退到内存 Hub。
 	var offlineStore gateway.OfflineStore = hub
 	var rdb *redis.Client
 	if cfg.Gateway.Redis.Addr != "" {
@@ -71,7 +71,7 @@ func NewApp(cfg *configs.Config) (*App, error) {
 		log.Printf("[main] Redis disabled (empty addr), using in-memory offline store")
 	}
 
-	// Initialize MySQL store if enabled.
+	// 如果启用则初始化 MySQL 存储。
 	var mysqlStore *repo.MySQLStore
 	if cfg.Gateway.MySQL.Enabled {
 		var err error
@@ -81,7 +81,7 @@ func NewApp(cfg *configs.Config) (*App, error) {
 		} else {
 			log.Printf("[main] MySQL connected at %s", cfg.Gateway.MySQL.DSN)
 		}
-		// Bootstrap admin users from config (idempotent — runs on every startup).
+		// 从配置中引导初始化管理员用户（幂等 —— 每次启动都会执行）。
 		if mysqlStore != nil && len(cfg.AdminUIDs) > 0 {
 			for _, adminUID := range cfg.AdminUIDs {
 				if err := mysqlStore.UpdateUserRole(context.Background(), adminUID, "admin"); err != nil {
@@ -100,7 +100,7 @@ func NewApp(cfg *configs.Config) (*App, error) {
 		userStore = mysqlStore
 	}
 
-	// Initialize Kafka producer if enabled.
+	// 如果启用则初始化 Kafka 生产者。
 	var kafkaProducer *mq.Producer
 	if cfg.Gateway.Kafka.Enabled && len(cfg.Gateway.Kafka.Brokers) > 0 {
 		kafkaCfg := mq.ProducerConfig{
@@ -118,13 +118,13 @@ func NewApp(cfg *configs.Config) (*App, error) {
 		}
 	}
 
-	// Initialize Logic gRPC client if configured.
+	// 如果配置了则初始化 Logic gRPC 客户端。
 	logicClient, err := gateway.NewLogicClient(cfg.Gateway.LogicGateway.Addr)
 	if err != nil {
 		log.Printf("[main] Logic gRPC client init failed (%v), will use local MessageStore", err)
 	}
 
-	// Build router config from gateway config.
+	// 根据网关配置构建路由配置。
 	routerCfg := gateway.RouterConfig{
 		DedupTTL:            time.Duration(cfg.Gateway.DedupTTL),
 		PersistConcurrency:  cfg.Gateway.PersistConcurrency,
@@ -141,30 +141,30 @@ func NewApp(cfg *configs.Config) (*App, error) {
 		router.SetLogicClient(logicClient)
 	}
 
-	// Wire rate limiting from config.
+	// 根据配置组装限流。
 	if cfg.Gateway.RateLimit.Enabled {
 		router.SetRateLimit(cfg.Gateway.RateLimit.Rate, cfg.Gateway.RateLimit.Burst)
 	}
 
-	// Set max connections limit on the hub.
+	// 在 hub 上设置最大连接数限制。
 	if cfg.Stability.MaxConnections > 0 {
 		hub.SetMaxConnections(cfg.Stability.MaxConnections)
 	}
 
-	// --- Multi-Gateway horizontal scaling ---
+	// --- 多网关水平扩展 ---
 	var grpcForwarder *gateway.GrpcForwarder
 	var grpcSrv *grpc.Server
 	var clusterMgr *gateway.ClusterManager
 
 	if cfg.Gateway.Grpc.Addr != "" && cfg.Gateway.Grpc.NodeID != "" {
-		// Build consistent hash ring with all peers plus self.
-		hr := gateway.NewHashRing(150) // 150 virtual nodes per physical node
+		// 构建包含所有对端节点与自身的哈希环。
+		hr := gateway.NewHashRing(150) // 每个物理节点 150 个虚拟节点
 		for nodeID := range cfg.Gateway.Grpc.PeerAddrs {
 			hr.Add(nodeID)
 		}
-		hr.Add(cfg.Gateway.Grpc.NodeID) // include self
+		hr.Add(cfg.Gateway.Grpc.NodeID) // 包含自身
 
-		// Create gRPC forwarder for cross-node message delivery.
+		// 创建用于跨节点消息投递的 gRPC 转发器。
 		grpcForwarder = gateway.NewGrpcForwarder(
 			hr,
 			cfg.Gateway.Grpc.NodeID,
@@ -173,12 +173,12 @@ func NewApp(cfg *configs.Config) (*App, error) {
 			time.Duration(cfg.Gateway.Grpc.ForwardRPCTimeout),
 		)
 
-		// Inject into router.
+		// 注入到路由中。
 		router.SetHashRing(hr)
 		router.SetForwarder(grpcForwarder)
 		router.SetThisNodeID(cfg.Gateway.Grpc.NodeID)
 
-		// Create gRPC server handler for incoming forwarded messages.
+		// 创建处理传入转发消息的 gRPC 服务器处理器。
 		grpcHandler := gateway.NewGrpcGatewayServer(hub, offlineStore, cfg.Gateway.Grpc.NodeID)
 		grpcSrv, err = gateway.StartGrpcServer(cfg.Gateway.Grpc.Addr, grpcHandler)
 		if err != nil {
@@ -186,7 +186,7 @@ func NewApp(cfg *configs.Config) (*App, error) {
 			grpcSrv = nil
 		}
 
-		// Set up dynamic clustering (health checks + optional Redis discovery).
+		// 设置动态集群（健康检查 + 可选的 Redis 服务发现）。
 		if grpcSrv != nil {
 			clusterCfg := gateway.ClusterConfig{
 				ThisNodeID: cfg.Gateway.Grpc.NodeID,
@@ -196,7 +196,7 @@ func NewApp(cfg *configs.Config) (*App, error) {
 				clusterCfg.HealthInterval = time.Duration(cfg.Gateway.Grpc.Discovery.HealthInterval)
 			}
 
-			// Enable Redis service discovery when configured and Redis is available.
+			// 当配置了 Redis 服务发现且 Redis 可用时启用。
 			if cfg.Gateway.Grpc.Discovery.Mode == "redis" && rdb != nil {
 				clusterCfg.Redis = rdb
 				if cfg.Gateway.Grpc.Discovery.RedisKey != "" {
@@ -219,7 +219,7 @@ func NewApp(cfg *configs.Config) (*App, error) {
 			cfg.Gateway.Grpc.NodeID, cfg.Gateway.Grpc.Addr, len(cfg.Gateway.Grpc.PeerAddrs))
 	}
 
-	// --- Group chat support ---
+	// --- 群聊支持 ---
 	var groupStore gateway.GroupStore
 	if mysqlStore != nil {
 		groupStore = gateway.NewMySQLGroupStore(mysqlStore.DB(), snow)
@@ -230,13 +230,13 @@ func NewApp(cfg *configs.Config) (*App, error) {
 	}
 	router.SetGroupStore(groupStore)
 
-	// --- Dedup Redis durability ---
+	// --- 去重 Redis 持久化 ---
 	if rdb != nil {
 		router.SetDedupRedis(rdb)
 		log.Printf("[main] dedup: Redis durability enabled")
 	}
 
-	// --- Friend relationship management ---
+	// --- 好友关系管理 ---
 	if mysqlStore != nil {
 		router.SetFriendStore(mysqlStore)
 		log.Printf("[main] friend system enabled (MySQL)")
@@ -244,11 +244,11 @@ func NewApp(cfg *configs.Config) (*App, error) {
 		log.Printf("[main] friend system disabled (no MySQL)")
 	}
 
-	// --- Read/unread receipt tracking ---
+	// --- 已读/未读回执跟踪 ---
 	unreadTracker := gateway.NewInMemoryUnreadTracker()
 	router.SetUnreadTracker(unreadTracker)
 
-	// --- Object storage for file/image messages ---
+	// --- 文件/图片消息的对象存储 ---
 	var objectStore gateway.ObjectStore
 	if cfg.Gateway.ObjectStorage.Enabled {
 		minioStore, err := gateway.NewMinioStore(context.Background(), cfg.Gateway.ObjectStorage)
@@ -274,7 +274,7 @@ func NewApp(cfg *configs.Config) (*App, error) {
 		cfg.AdminUIDs,
 	)
 
-	// Register dependency health checks for the /health endpoint.
+	// 为 /health 端点注册依赖健康检查。
 	if rdb != nil {
 		gateway.RegisterHealthCheck("redis", func(ctx context.Context) error {
 			return rdb.Ping(ctx).Err()
@@ -286,11 +286,11 @@ func NewApp(cfg *configs.Config) (*App, error) {
 		})
 	}
 	if kafkaProducer != nil {
-		// Kafka producer is optional; health check reports enabled.
-		// The kafka-go Writer has no Ping method, so we report enabled
-		// and surface errors via Publish logs.
+		// Kafka 生产者是可选的；健康检查报告为已启用。
+		// kafka-go 的 Writer 没有 Ping 方法，因此报告为已启用，
+		// 错误通过 Publish 日志暴露。
 		gateway.RegisterHealthCheck("kafka", func(ctx context.Context) error {
-			return nil // enabled = presumed healthy; Publish failures are logged
+			return nil // 已启用 = 视为健康；Publish 失败会被记录日志
 		})
 	}
 	if ms, ok := objectStore.(*gateway.MinioStore); ok {
@@ -314,60 +314,60 @@ func NewApp(cfg *configs.Config) (*App, error) {
 	}, nil
 }
 
-// Close cleans up application resources in dependency order.
+// Close 按依赖顺序清理应用资源。
 func (app *App) Close() {
-	// 1. Stop background goroutines (DedupCache, RateLimiter).
+	// 1. 停止后台 goroutine（DedupCache、RateLimiter）。
 	if app.router != nil {
 		app.router.Stop()
 	}
 
-	// 2. Stop cluster manager (deregisters from Redis, stops health checks).
+	// 2. 停止集群管理器（从 Redis 注销，停止健康检查）。
 	if app.clusterMgr != nil {
 		app.clusterMgr.Stop()
 	}
 
-	// 3. Stop gRPC forwarder (peer connections).
+	// 3. 停止 gRPC 转发器（对端连接）。
 	if app.grpcForwarder != nil {
 		if err := app.grpcForwarder.Close(); err != nil {
 			log.Printf("[main] gRPC forwarder close error: %v", err)
 		}
 	}
 
-	// 4. Stop gRPC server.
+	// 4. 停止 gRPC 服务器。
 	if app.grpcServer != nil {
 		app.grpcServer.GracefulStop()
 		log.Printf("[main] gRPC server stopped")
 	}
 
-	// 5. Stop pprof server.
+	// 5. 停止 pprof 服务器。
 	if app.pprofServer != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		app.pprofServer.Shutdown(ctx)
 	}
 
-	// 6. Kafka producer.
+	// 6. Kafka 生产者。
 	if app.kafkaProducer != nil {
 		if err := app.kafkaProducer.Close(); err != nil {
 			log.Printf("[main] Kafka producer close error: %v", err)
 		}
 	}
 
-	// 7. Logic gRPC client.
+	// 7. Logic gRPC 客户端。
 	if app.logicClient != nil {
 		if err := app.logicClient.Close(); err != nil {
 			log.Printf("[main] Logic gRPC client close error: %v", err)
 		}
 	}
 
-	// 8. Redis.
+	// 8. Redis。
 	if app.redisClient != nil {
 		if err := app.redisClient.Close(); err != nil {
 			log.Printf("[main] Redis close error: %v", err)
 		}
 	}
 
-	// 9. MySQL (last — other components may have used it).
+	// 9. MySQL（最后 —— 其他组件可能还在使用它）。
 	if app.mysqlStore != nil {
 		if err := app.mysqlStore.Close(); err != nil {
 			log.Printf("[main] MySQL close error: %v", err)
@@ -375,14 +375,14 @@ func (app *App) Close() {
 	}
 }
 
-// Run starts the HTTP server and optionally the gnet TCP server, blocking until ctx is cancelled.
+// Run 启动 HTTP 服务器（可选地启动 gnet TCP 服务器），阻塞直到 ctx 被取消。
 func (app *App) Run(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/login", app.Server.HandleLogin)
 	mux.HandleFunc("/register", app.Server.HandleRegister)
 	mux.HandleFunc("/online", app.Server.HandleOnlineUsers)
 
-	// Group chat management endpoints.
+	// 群聊管理端点。
 	mux.HandleFunc("/group/create", app.Server.HandleGroupCreate)
 	mux.HandleFunc("/group/join", app.Server.HandleGroupJoin)
 	mux.HandleFunc("/group/invite", app.Server.HandleGroupInvite)
@@ -393,20 +393,20 @@ func (app *App) Run(ctx context.Context) error {
 	mux.HandleFunc("/group/members", app.Server.HandleGroupMembers)
 	mux.HandleFunc("/group/list", app.Server.HandleGroupList)
 
-	// Unread count query.
+	// 未读数量查询。
 	mux.HandleFunc("/unread", app.Server.HandleUnreadCount)
 
-	// File/image upload and download.
+	// 文件/图片上传与下载。
 	mux.HandleFunc("/upload", app.Server.HandleUpload)
 	mux.HandleFunc("/file", app.Server.HandleDownload)
 
-	// Message fulltext search.
+	// 消息全文搜索。
 	mux.HandleFunc("/search", app.Server.HandleSearch)
 
-	// Change password.
+	// 修改密码。
 	mux.HandleFunc("/change-password", app.Server.HandleChangePassword)
 
-	// Friend management.
+	// 好友管理。
 	mux.HandleFunc("/friend/request", app.Server.HandleFriendRequest)
 	mux.HandleFunc("/friend/accept", app.Server.HandleFriendAccept)
 	mux.HandleFunc("/friend/reject", app.Server.HandleFriendReject)
@@ -415,32 +415,32 @@ func (app *App) Run(ctx context.Context) error {
 
 	transport := app.Config.Gateway.Transport
 	if transport == "" {
-		transport = "websocket" // backward compat for old configs
+		transport = "websocket" // 为旧配置保持向后兼容
 	}
 
-	// Only mount /ws if WebSocket transport is active.
+	// 仅当 WebSocket 传输启用时挂载 /ws。
 	if transport == "websocket" || transport == "both" {
 		mux.HandleFunc("/ws", app.Server.HandleWS)
 	}
 
 	mux.HandleFunc("/health", app.Server.HandleHealth)
 
-	// Admin monitoring and management endpoints.
+	// 管理员监控与管理端点。
 	mux.HandleFunc("/admin/stats", app.Server.HandleAdminStats)
 	mux.HandleFunc("/admin/users", app.Server.HandleAdminUsers)
 	mux.HandleFunc("/admin/users/delete", app.Server.HandleAdminUserDelete)
 	mux.HandleFunc("/admin/messages", app.Server.HandleAdminMessages)
 	mux.HandleFunc("/admin/messages/delete", app.Server.HandleAdminMessageDelete)
 
-	// Wrap with panic recovery middleware
+	// 使用 panic 恢复中间件包装
 	handler := gateway.Recovery(mux)
 
-	// Start pprof server if enabled.
+	// 如果启用则启动 pprof 服务器。
 	st := app.Config.Stability
 	if st.PprofEnabled && st.PprofAddr != "" {
 		pprofSrv := &http.Server{
 			Addr:    st.PprofAddr,
-			Handler: http.DefaultServeMux, // net/http/pprof registers on DefaultServeMux
+			Handler: http.DefaultServeMux, // net/http/pprof 注册在 DefaultServeMux 上
 		}
 		app.pprofServer = pprofSrv
 		go func() {
@@ -451,7 +451,7 @@ func (app *App) Run(ctx context.Context) error {
 		}()
 	}
 
-	// Start gnet TCP server if configured.
+	// 如果配置了则启动 gnet TCP 服务器。
 	if transport == "gnet" || transport == "both" {
 		go func() {
 			log.Printf("[main] gnet TCP server starting on %s", app.Config.Gateway.TCPAddr)
@@ -461,12 +461,12 @@ func (app *App) Run(ctx context.Context) error {
 		}()
 	}
 
-	// Build HTTP server with configured timeouts.
+	// 使用配置的超时时间构建 HTTP 服务器。
 	shutdownTimeout := time.Duration(st.ShutdownTimeout)
 	if shutdownTimeout <= 0 {
 		shutdownTimeout = 30 * time.Second
 	}
-	// Apply HTTP timeouts with zero-value protection (missing config = defaults).
+	// 应用 HTTP 超时，带零值保护（配置缺失 = 使用默认值）。
 	readTimeout := time.Duration(st.HTTPReadTimeout)
 	if readTimeout <= 0 {
 		readTimeout = 10 * time.Second
@@ -491,14 +491,14 @@ func (app *App) Run(ctx context.Context) error {
 		<-ctx.Done()
 		log.Println("[main] shutting down...")
 
-		// 1. Shutdown HTTP server first (stop accepting new HTTP/WS connections).
+		// 1. 先关闭 HTTP 服务器（停止接受新的 HTTP/WS 连接）。
 		httpCtx, httpCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer httpCancel()
 		if err := srv.Shutdown(httpCtx); err != nil {
 			log.Printf("[main] HTTP shutdown error: %v", err)
 		}
 
-		// 2. Shutdown gnet TCP server (stop accepting new TCP connections, drain existing).
+		// 2. 关闭 gnet TCP 服务器（停止接受新 TCP 连接，排空现有连接）。
 		if gh := app.Server.GnetHandler(); gh != nil {
 			gnetCtx, gnetCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 			defer gnetCancel()

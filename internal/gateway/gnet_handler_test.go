@@ -17,7 +17,7 @@ import (
 )
 
 // =============================================================================
-// mockGnetConn — implements gnet.Conn for unit testing GnetHandler methods.
+// mockGnetConn —— 实现 gnet.Conn，用于单元测试 GnetHandler 方法。
 // =============================================================================
 
 type mockGnetConn struct {
@@ -27,10 +27,10 @@ type mockGnetConn struct {
 	closed  bool
 	mu      sync.Mutex
 
-	// Frame decoding (for OnTraffic simulation)
-	frameBuf []byte // complete frame: [4-byte len][payload]
+	// 帧解码（用于 OnTraffic 模拟）
+	frameBuf []byte // 完整帧：[4 字节长度][载荷]
 
-	// Captured writes (synchronous Write + AsyncWrite)
+	// 捕获的写入（同步 Write + AsyncWrite）
 	writes      [][]byte
 	asyncWrites [][]byte
 	asyncCbs    []gnet.AsyncCallback
@@ -40,19 +40,19 @@ func newMockGnetConn(fd int) *mockGnetConn {
 	return &mockGnetConn{fd: fd}
 }
 
-// frameBytes returns a complete gnet frame from the given payload.
+// frameBytes 根据给定的载荷返回完整的 gnet 帧。
 func frameBytes(payload []byte) []byte {
 	header := make([]byte, 4)
 	binary.BigEndian.PutUint32(header, uint32(len(payload)))
 	return append(header, payload...)
 }
 
-// setFrame sets the frame data that Peek/Discard/Next will consume.
+// setFrame 设置 Peek/Discard/Next 将消费的帧数据。
 func (m *mockGnetConn) setFrame(payload []byte) {
 	m.frameBuf = frameBytes(payload)
 }
 
-// ---- Reader interface (io.Reader, io.WriterTo, Next, Peek, Discard, InboundBuffered) ----
+// ---- Reader 接口（io.Reader、io.WriterTo、Next、Peek、Discard、InboundBuffered）----
 
 func (m *mockGnetConn) Read(p []byte) (int, error) {
 	m.mu.Lock()
@@ -93,7 +93,7 @@ func (m *mockGnetConn) Peek(n int) ([]byte, error) {
 	if n > len(m.frameBuf) {
 		return nil, io.ErrShortBuffer
 	}
-	// Return a copy (matches gnet semantics: Peek data is valid until Discard)
+	// 返回副本（与 gnet 语义一致：Peek 的数据在 Discard 之前有效）
 	buf := make([]byte, n)
 	copy(buf, m.frameBuf[:n])
 	return buf, nil
@@ -115,7 +115,7 @@ func (m *mockGnetConn) InboundBuffered() int {
 	return len(m.frameBuf)
 }
 
-// ---- Writer interface (io.Writer, io.ReaderFrom, SendTo, Writev, Flush, OutboundBuffered, AsyncWrite, AsyncWritev) ----
+// ---- Writer 接口（io.Writer、io.ReaderFrom、SendTo、Writev、Flush、OutboundBuffered、AsyncWrite、AsyncWritev）----
 
 func (m *mockGnetConn) Write(p []byte) (int, error) {
 	m.mu.Lock()
@@ -159,7 +159,7 @@ func (m *mockGnetConn) AsyncWritev(bs [][]byte, cb gnet.AsyncCallback) error {
 	return nil
 }
 
-// ---- Socket interface (Fd, Dup, SetReadBuffer, SetWriteBuffer, SetLinger, SetKeepAlivePeriod, SetKeepAlive, SetNoDelay) ----
+// ---- Socket 接口（Fd、Dup、SetReadBuffer、SetWriteBuffer、SetLinger、SetKeepAlivePeriod、SetKeepAlive、SetNoDelay）----
 
 func (m *mockGnetConn) Fd() int                       { return m.fd }
 func (m *mockGnetConn) Dup() (int, error)              { return m.fd + 1000, nil }
@@ -172,7 +172,7 @@ func (m *mockGnetConn) SetKeepAlive(enabled bool, idle, intvl time.Duration, cnt
 }
 func (m *mockGnetConn) SetNoDelay(noDelay bool) error { return nil }
 
-// ---- Connection methods ----
+// ---- 连接方法 ----
 
 func (m *mockGnetConn) Context() any     { return m.ctx }
 func (m *mockGnetConn) SafeContext() any { return m.safeCtx }
@@ -196,10 +196,10 @@ func (m *mockGnetConn) SetDeadline(t time.Time) error              { return nil 
 func (m *mockGnetConn) SetReadDeadline(t time.Time) error          { return nil }
 func (m *mockGnetConn) SetWriteDeadline(t time.Time) error         { return nil }
 
-// EventLoop returns nil — not called by GnetHandler code paths.
+// EventLoop 返回 nil —— GnetHandler 代码路径不会调用它。
 func (m *mockGnetConn) EventLoop() gnet.EventLoop { return nil }
 
-// ---- Helper: capture AsyncWrite payloads as proto messages ----
+// ---- 辅助：以 proto 消息形式捕获 AsyncWrite 载荷 ----
 
 func (m *mockGnetConn) lastAsyncWrite() []byte {
 	m.mu.Lock()
@@ -210,7 +210,7 @@ func (m *mockGnetConn) lastAsyncWrite() []byte {
 	return m.asyncWrites[len(m.asyncWrites)-1]
 }
 
-// lastAsyncWritePayload returns the last AsyncWrite's protobuf payload (strips 4-byte frame header).
+// lastAsyncWritePayload 返回最后一次 AsyncWrite 的 protobuf 载荷（去掉 4 字节帧头）。
 func (m *mockGnetConn) lastAsyncWritePayload() []byte {
 	data := m.lastAsyncWrite()
 	if len(data) < 4 {
@@ -226,7 +226,7 @@ func (m *mockGnetConn) asyncWriteCount() int {
 }
 
 // =============================================================================
-// Test helpers
+// 测试辅助函数
 // =============================================================================
 
 func newTestGnetHandler(t *testing.T) (*GnetHandler, *Hub, *jwt.Manager) {
@@ -241,13 +241,13 @@ func newTestGnetHandler(t *testing.T) (*GnetHandler, *Hub, *jwt.Manager) {
 		ctx, router, hub, jwtMgr,
 		256,                     // sendBufSize
 		65536,                   // maxMsgSize
-		200*time.Millisecond,    // heartbeatTimeout (short for tests)
+		200*time.Millisecond,    // heartbeatTimeout（为测试设短）
 		4,                       // workerPoolSize
 	)
 	return handler, hub, jwtMgr
 }
 
-// jwtToken generates a valid JWT for testing.
+// jwtToken 为测试生成有效的 JWT。
 func jwtToken(t *testing.T, mgr *jwt.Manager, uid, username string) string {
 	t.Helper()
 	token, err := mgr.Generate(uid, username, "user")
@@ -257,7 +257,7 @@ func jwtToken(t *testing.T, mgr *jwt.Manager, uid, username string) string {
 	return token
 }
 
-// loginFrame creates a protobuf-encoded CmdLogin frame with the JWT in Content.
+// loginFrame 创建编码为 protobuf 的 CmdLogin 帧，JWT 放在 Content 中。
 func loginFrame(t *testing.T, mgr *jwt.Manager, uid, username string) []byte {
 	t.Helper()
 	token := jwtToken(t, mgr, uid, username)
@@ -270,7 +270,7 @@ func loginFrame(t *testing.T, mgr *jwt.Manager, uid, username string) []byte {
 }
 
 // =============================================================================
-// WorkerPool tests
+// WorkerPool 测试
 // =============================================================================
 
 func TestWorkerPoolSubmit(t *testing.T) {
@@ -321,11 +321,11 @@ func TestWorkerPoolMultipleTasks(t *testing.T) {
 }
 
 func TestWorkerPoolDefaultSize(t *testing.T) {
-	wp := NewWorkerPool(0) // should default to 4
+	wp := NewWorkerPool(0) // 应默认为 4
 	if wp == nil {
 		t.Fatal("NewWorkerPool(0) returned nil")
 	}
-	// Submit a task to verify it works.
+	// 提交一个任务以验证其正常工作。
 	done := make(chan struct{})
 	wp.Submit(func() { close(done) })
 	select {
@@ -336,19 +336,19 @@ func TestWorkerPoolDefaultSize(t *testing.T) {
 }
 
 func TestWorkerPoolQueueFull(t *testing.T) {
-	// Recreate with actual buffer to test the non-blocking send.
-	wp2 := NewWorkerPool(1) // tasks buffer = 1*256 = 256
+	// 用实际缓冲区重新创建，测试非阻塞发送。
+	wp2 := NewWorkerPool(1) // 任务缓冲区 = 1*256 = 256
 
-	// Fill the queue by submitting a blocking task.
+	// 通过提交一个阻塞任务来填满队列。
 	blocker := make(chan struct{})
-	wp2.Submit(func() { <-blocker }) // first task blocks the worker
+	wp2.Submit(func() { <-blocker }) // 第一个任务阻塞 worker
 
-	// Submit 300 more tasks — the last few should be dropped (buffer ~256).
+	// 再提交 300 个任务 —— 最后几个应被丢弃（缓冲区约 256）。
 	dropped := false
 	for i := 0; i < 300; i++ {
 		select {
 		case wp2.tasks <- func() {}:
-			// added to queue
+			// 已加入队列
 		default:
 			dropped = true
 		}
@@ -356,11 +356,11 @@ func TestWorkerPoolQueueFull(t *testing.T) {
 	if !dropped {
 		t.Log("queue didn't overflow with 300 tasks (buffer may be larger than expected)")
 	}
-	close(blocker) // unblock the worker
+	close(blocker) // 解除 worker 阻塞
 }
 
 // =============================================================================
-// OnOpen tests
+// OnOpen 测试
 // =============================================================================
 
 func TestGnetOnOpen(t *testing.T) {
@@ -380,7 +380,7 @@ func TestGnetOnOpen(t *testing.T) {
 }
 
 // =============================================================================
-// OnClose tests
+// OnClose 测试
 // =============================================================================
 
 func TestGnetOnClosePending(t *testing.T) {
@@ -392,7 +392,7 @@ func TestGnetOnClosePending(t *testing.T) {
 	if action != gnet.None {
 		t.Errorf("expected gnet.None, got %v", action)
 	}
-	// Pending connection should NOT be in hub.
+	// 挂起状态的连接不应在 hub 中。
 	if hub.Count(context.Background()) != 0 {
 		t.Errorf("expected 0 clients in hub, got %d", hub.Count(context.Background()))
 	}
@@ -402,7 +402,7 @@ func TestGnetOnCloseAuthenticated(t *testing.T) {
 	handler, hub, _ := newTestGnetHandler(t)
 	c := newMockGnetConn(1)
 
-	// Create an authenticated client and set it as context.
+	// 创建一个已认证的客户端并将其设置为 context。
 	client := newTestClient(t, "alice", "Alice")
 	client.transport = newGnetTransport(c)
 	c.SetContext(client)
@@ -418,11 +418,11 @@ func TestGnetOnCloseAuthenticated(t *testing.T) {
 		t.Errorf("expected gnet.None, got %v", action)
 	}
 
-	// Client should be unregistered.
+	// 客户端应被注销。
 	if hub.Count(context.Background()) != 0 {
 		t.Errorf("expected 0 clients after OnClose, got %d", hub.Count(context.Background()))
 	}
-	// connMap should be cleaned.
+	// connMap 应被清理。
 	if _, ok := handler.connMap.Load(c.Fd()); ok {
 		t.Error("expected connMap entry to be deleted")
 	}
@@ -431,17 +431,17 @@ func TestGnetOnCloseAuthenticated(t *testing.T) {
 func TestGnetOnCloseNilContext(t *testing.T) {
 	handler, _, _ := newTestGnetHandler(t)
 	c := newMockGnetConn(1)
-	// Don't set any context.
+	// 不设置任何 context。
 
 	action := handler.OnClose(c, nil)
 	if action != gnet.None {
 		t.Errorf("expected gnet.None, got %v", action)
 	}
-	// Should not panic — nil context is handled gracefully.
+	// 不应 panic —— nil context 会被优雅处理。
 }
 
 // =============================================================================
-// handleLogin tests
+// handleLogin 测试
 // =============================================================================
 
 func TestHandleLoginSuccess(t *testing.T) {
@@ -463,12 +463,12 @@ func TestHandleLoginSuccess(t *testing.T) {
 		t.Errorf("expected Username=Alice, got %s", client.Username)
 	}
 
-	// Client should be registered in hub.
+	// 客户端应已注册到 hub。
 	if !hub.IsOnline(context.Background(), "alice") {
 		t.Error("expected alice to be online")
 	}
 
-	// connMap should store the client.
+	// connMap 应存储该客户端。
 	stored, ok := handler.connMap.Load(c.Fd())
 	if !ok {
 		t.Error("expected connMap entry")
@@ -477,11 +477,11 @@ func TestHandleLoginSuccess(t *testing.T) {
 		t.Error("connMap stored wrong client")
 	}
 
-	// Login response should be queued on the send channel (or flushed via WriteLoop).
-	// handleLogin starts WriteLoop as a goroutine; give it a moment to flush to AsyncWrite.
+	// 登录响应应进入发送通道队列（或由 WriteLoop 刷新）。
+	// handleLogin 以 goroutine 启动 WriteLoop；稍等片刻让它刷新到 AsyncWrite。
 	time.Sleep(10 * time.Millisecond)
 	if c.asyncWriteCount() == 0 {
-		// WriteLoop hasn't run yet; check the send channel directly.
+		// WriteLoop 尚未运行；直接检查发送通道。
 		raw := readFromChan(t, client.send)
 		resp := &proto.Message{}
 		if err := pb.Unmarshal(raw, resp); err != nil {
@@ -494,7 +494,7 @@ func TestHandleLoginSuccess(t *testing.T) {
 			t.Errorf("expected To=alice, got %s", resp.To)
 		}
 	} else {
-		// WriteLoop flushed it — check AsyncWrite captured data (strip 4-byte frame header).
+		// WriteLoop 已刷新 —— 检查 AsyncWrite 捕获的数据（去掉 4 字节帧头）。
 		respData := c.lastAsyncWritePayload()
 		if len(respData) == 0 {
 			t.Fatal("AsyncWrite payload empty after stripping frame header")
@@ -516,7 +516,7 @@ func TestHandleLoginWrongCmd(t *testing.T) {
 	handler, _, _ := newTestGnetHandler(t)
 	c := newMockGnetConn(1)
 
-	// Send CmdChat instead of CmdLogin.
+	// 发送 CmdChat 而不是 CmdLogin。
 	msg := &proto.Message{Cmd: proto.CmdChat, Content: "not a login"}
 	frame, _ := pb.Marshal(msg)
 
@@ -528,8 +528,8 @@ func TestHandleLoginWrongCmd(t *testing.T) {
 		t.Error("expected nil client on error")
 	}
 	if !c.closed {
-		// handleLogin doesn't close the conn directly — processFrame does on error.
-		// But the error message should indicate wrong Cmd.
+		// handleLogin 不直接关闭连接 —— processFrame 在出错时才会关闭。
+		// 但错误信息应指明 Cmd 错误。
 		t.Logf("error (expected): %v", err)
 	}
 }
@@ -538,7 +538,7 @@ func TestHandleLoginInvalidJWT(t *testing.T) {
 	handler, _, _ := newTestGnetHandler(t)
 	c := newMockGnetConn(1)
 
-	// CmdLogin with a fake token.
+	// 使用伪造令牌的 CmdLogin。
 	msg := &proto.Message{Cmd: proto.CmdLogin, Content: "not.a.valid.token"}
 	frame, _ := pb.Marshal(msg)
 
@@ -555,7 +555,7 @@ func TestHandleLoginBadProtobuf(t *testing.T) {
 	handler, _, _ := newTestGnetHandler(t)
 	c := newMockGnetConn(1)
 
-	// Garbage data that is not valid protobuf.
+	// 不是有效 protobuf 的垃圾数据。
 	client, err := handler.handleLogin([]byte("this is not protobuf"), c)
 	if err == nil {
 		t.Error("expected unmarshal error")
@@ -579,13 +579,13 @@ func TestHandleLoginEmptyFrame(t *testing.T) {
 }
 
 // =============================================================================
-// processFrame tests
+// processFrame 测试
 // =============================================================================
 
 func TestProcessFrameNilContext(t *testing.T) {
 	handler, _, _ := newTestGnetHandler(t)
 	c := newMockGnetConn(1)
-	// Don't set context — should close immediately.
+	// 不设置 context —— 应立即关闭。
 
 	handler.processFrame([]byte("anything"), c)
 	if !c.closed {
@@ -609,7 +609,7 @@ func TestProcessFramePendingWrongCmd(t *testing.T) {
 	c := newMockGnetConn(1)
 	c.SetContext("pending")
 
-	// Send a non-login message on a pending connection.
+	// 在挂起状态的连接上发送非登录消息。
 	msg := &proto.Message{Cmd: proto.CmdHeartbeat}
 	frame, _ := pb.Marshal(msg)
 
@@ -641,12 +641,12 @@ func TestProcessFramePendingSuccess(t *testing.T) {
 	frame := loginFrame(t, jwtMgr, "bob", "Bob")
 	handler.processFrame(frame, c)
 
-	// Connection should still be open.
+	// 连接应仍然打开。
 	if c.closed {
 		t.Error("connection should not be closed after successful login")
 	}
 
-	// Context should now be a *Client, not "pending".
+	// context 现在应为 *Client，而不是 "pending"。
 	client, ok := c.Context().(*Client)
 	if !ok {
 		t.Fatalf("expected *Client context, got %T", c.Context())
@@ -655,7 +655,7 @@ func TestProcessFramePendingSuccess(t *testing.T) {
 		t.Errorf("expected UID=bob, got %s", client.UID)
 	}
 
-	// Client should be registered.
+	// 客户端应已注册。
 	if !hub.IsOnline(context.Background(), "bob") {
 		t.Error("bob should be online after login")
 	}
@@ -665,21 +665,21 @@ func TestProcessFrameAuthenticatedValidMessage(t *testing.T) {
 	handler, hub, _ := newTestGnetHandler(t)
 	c := newMockGnetConn(2)
 
-	// Register an already-authenticated client.
+	// 注册一个已认证的客户端。
 	client := newTestClient(t, "alice", "Alice")
 	client.transport = newGnetTransport(c)
 	c.SetContext(client)
 	hub.Register(context.Background(), client)
 	handler.connMap.Store(c.Fd(), client)
 
-	// Send a heartbeat message.
+	// 发送一条心跳消息。
 	msg := &proto.Message{Cmd: proto.CmdHeartbeat}
 	frame, _ := pb.Marshal(msg)
 
 	handler.processFrame(frame, c)
 
-	// Heartbeat response should arrive on the client's send channel
-	// (dispatched via worker pool → router).
+	// 心跳响应应到达客户端的发送通道
+	// （通过 worker pool → router 分发）。
 	raw := readFromChan(t, client.send)
 	resp := &proto.Message{}
 	if err := pb.Unmarshal(raw, resp); err != nil {
@@ -699,7 +699,7 @@ func TestProcessFrameAuthenticatedBadProtobuf(t *testing.T) {
 	c.SetContext(client)
 	hub.Register(context.Background(), client)
 
-	// Send garbage — should not close connection, just log.
+	// 发送垃圾数据 —— 不应关闭连接，只记录日志。
 	handler.processFrame([]byte("not valid protobuf"), c)
 	if c.closed {
 		t.Error("connection should NOT be closed on bad protobuf from authenticated client")
@@ -715,14 +715,14 @@ func TestProcessFrameAuthenticatedOverwritesFrom(t *testing.T) {
 	c.SetContext(client)
 	hub.Register(context.Background(), client)
 
-	// Register target in hub for online delivery.
+	// 在 hub 中注册目标客户端以实现在线投递。
 	target := newTestClient(t, "bob", "Bob")
 	hub.Register(context.Background(), target)
 
-	// alice sends a chat claiming to be "eve" (spoof attempt).
+	// alice 发送一条自称是 "eve" 的聊天消息（伪造尝试）。
 	msg := &proto.Message{
 		Cmd:      proto.CmdChat,
-		From:     "eve", // spoofed sender — should be overwritten
+		From:     "eve", // 伪造的发送者 —— 应被覆盖
 		To:       "bob",
 		ChatType: proto.ChatTypeSingle,
 		MsgType:  proto.MsgTypeText,
@@ -732,7 +732,7 @@ func TestProcessFrameAuthenticatedOverwritesFrom(t *testing.T) {
 
 	handler.processFrame(frame, c)
 
-	// Target receives the message — From should be "alice", not "eve".
+	// 目标收到消息 —— From 应为 "alice"，而不是 "eve"。
 	raw := readFromChan(t, target.send)
 	delivered := &proto.Message{}
 	if err := pb.Unmarshal(raw, delivered); err != nil {
@@ -749,7 +749,7 @@ func TestProcessFrameAuthenticatedOverwritesFrom(t *testing.T) {
 func TestProcessFrameInvalidContextType(t *testing.T) {
 	handler, _, _ := newTestGnetHandler(t)
 	c := newMockGnetConn(4)
-	// Set context to an invalid type (not "pending" and not *Client).
+	// 将 context 设置为无效类型（不是 "pending" 也不是 *Client）。
 	c.SetContext(42)
 
 	handler.processFrame([]byte("test"), c)
@@ -759,7 +759,7 @@ func TestProcessFrameInvalidContextType(t *testing.T) {
 }
 
 // =============================================================================
-// OnTraffic tests (frame decoding)
+// OnTraffic 测试（帧解码）
 // =============================================================================
 
 func TestGnetOnTrafficCompleteFrame(t *testing.T) {
@@ -767,20 +767,20 @@ func TestGnetOnTrafficCompleteFrame(t *testing.T) {
 	c := newMockGnetConn(5)
 	c.SetContext("pending")
 
-	// Set up a complete login frame in the mock's buffer.
+	// 在 mock 的缓冲区中设置一个完整的登录帧。
 	frame := loginFrame(t, jwtMgr, "carol", "Carol")
 	c.setFrame(frame)
 
-	// OnTraffic should decode the frame and call processFrame.
+	// OnTraffic 应解码帧并调用 processFrame。
 	action := handler.OnTraffic(c)
 	if action != gnet.None {
 		t.Errorf("expected gnet.None, got %v", action)
 	}
-	// Connection should not be closed.
+	// 连接不应被关闭。
 	if c.closed {
 		t.Error("connection should not be closed")
 	}
-	// Carol should be registered.
+	// carol 应已注册。
 	if !hub.IsOnline(context.Background(), "carol") {
 		t.Error("carol should be online after login via OnTraffic")
 	}
@@ -790,7 +790,7 @@ func TestGnetOnTrafficFrameTooLarge(t *testing.T) {
 	handler, _, _ := newTestGnetHandler(t)
 	c := newMockGnetConn(6)
 
-	// Set up a frame with a length > maxFrameSize (65536).
+	// 设置一个长度 > maxFrameSize（65536）的帧。
 	payload := make([]byte, handler.maxFrameSize+1)
 	header := make([]byte, 4)
 	binary.BigEndian.PutUint32(header, uint32(len(payload)))
@@ -806,7 +806,7 @@ func TestGnetOnTrafficIncompleteHeader(t *testing.T) {
 	handler, _, _ := newTestGnetHandler(t)
 	c := newMockGnetConn(7)
 
-	// Less than 4 bytes — incomplete header.
+	// 少于 4 字节 —— 不完整的头。
 	c.frameBuf = []byte{0x00, 0x01}
 
 	action := handler.OnTraffic(c)
@@ -819,13 +819,13 @@ func TestGnetOnTrafficIncompletePayload(t *testing.T) {
 	handler, _, _ := newTestGnetHandler(t)
 	c := newMockGnetConn(8)
 
-	// Header says 100 bytes, but only 10 bytes follow.
+	// 头部声明 100 字节，但后面只有 10 字节。
 	header := make([]byte, 4)
 	binary.BigEndian.PutUint32(header, 100)
 	c.frameBuf = append(header, make([]byte, 10)...)
 
 	action := handler.OnTraffic(c)
-	// Should wait for more data (incomplete payload).
+	// 应等待更多数据（载荷不完整）。
 	if action != gnet.None {
 		t.Errorf("expected gnet.None for incomplete payload, got %v", action)
 	}
@@ -836,12 +836,12 @@ func TestGnetOnTrafficMultipleFrames(t *testing.T) {
 	c := newMockGnetConn(9)
 	c.SetContext("pending")
 
-	// Set up two login frames back-to-back. First logs in, second is ignored
-	// (already authenticated, but it's a CmdLogin on an authenticated conn —
-	// processFrame won't go through the login path since ctx is *Client, not "pending").
-	// Just test that the first frame is properly consumed.
+	// 连续设置两个登录帧。第一个完成登录，第二个被忽略
+	// （已经认证，但在已认证的连接上收到 CmdLogin ——
+	// 由于 ctx 是 *Client 而不是 "pending"，processFrame 不会走登录流程）。
+	// 只测试第一个帧被正确消费。
 	frame := loginFrame(t, jwtMgr, "dave", "Dave")
-	// Put two frames in buffer.
+	// 在缓冲区中放入两个帧。
 	c.frameBuf = append(frameBytes(frame), frameBytes(frame)...)
 
 	action := handler.OnTraffic(c)
@@ -854,7 +854,7 @@ func TestGnetOnTrafficMultipleFrames(t *testing.T) {
 }
 
 // =============================================================================
-// Heartbeat checker tests
+// 心跳检查器测试
 // =============================================================================
 
 func TestHeartbeatCheckerKicksStaleConnections(t *testing.T) {
@@ -864,12 +864,12 @@ func TestHeartbeatCheckerKicksStaleConnections(t *testing.T) {
 	router := NewRouter(hub, hub, sg, nil, DefaultRouterConfig())
 
 	ctx := context.Background()
-	// Create handler with very short heartbeat timeout.
+	// 创建心跳超时极短的 handler。
 	handler := NewGnetHandler(
 		ctx, router, hub, jwtMgr,
 		256,                  // sendBufSize
 		65536,                // maxMsgSize
-		100*time.Millisecond, // heartbeatTimeout — connections older than this get kicked
+		100*time.Millisecond, // heartbeatTimeout —— 超过此时长的连接会被踢下线
 		4,                    // workerPoolSize
 	)
 
@@ -880,18 +880,18 @@ func TestHeartbeatCheckerKicksStaleConnections(t *testing.T) {
 	hub.Register(context.Background(), client)
 	handler.connMap.Store(c.Fd(), client)
 
-	// Set heartbeat to a time far in the past.
+	// 将心跳时间设置为很久以前。
 	client.SetHeartbeat(time.Now().Add(-time.Hour))
 
-	// The checker runs at heartbeatTimeout/2 = 50ms intervals.
-	// Wait for the checker to detect the stale connection.
+	// 检查器以 heartbeatTimeout/2 = 50ms 的间隔运行。
+	// 等待检查器检测到过期的连接。
 	time.Sleep(300 * time.Millisecond)
 
-	// Client should be unregistered.
+	// 客户端应被注销。
 	if hub.IsOnline(context.Background(), "eve") {
 		t.Error("eve should have been kicked by heartbeat checker")
 	}
-	// connMap should be cleaned.
+	// connMap 应被清理。
 	if _, ok := handler.connMap.Load(c.Fd()); ok {
 		t.Error("connMap entry should be deleted after heartbeat timeout")
 	}
@@ -908,7 +908,7 @@ func TestHeartbeatCheckerKeepsActiveConnections(t *testing.T) {
 		ctx, router, hub, jwtMgr,
 		256,                  // sendBufSize
 		65536,                // maxMsgSize
-		10*time.Second,       // heartbeatTimeout — very long, won't trigger
+		10*time.Second,       // heartbeatTimeout —— 很长，不会触发
 		4,                    // workerPoolSize
 	)
 
@@ -919,21 +919,21 @@ func TestHeartbeatCheckerKeepsActiveConnections(t *testing.T) {
 	hub.Register(context.Background(), client)
 	handler.connMap.Store(c.Fd(), client)
 
-	// Heartbeat is current (set by NewClient).
+	// 心跳是当前的（由 NewClient 设置）。
 	time.Sleep(100 * time.Millisecond)
 
-	// Client should still be online.
+	// 客户端应仍然在线。
 	if !hub.IsOnline(context.Background(), "frank") {
 		t.Error("frank should still be online (heartbeat is recent)")
 	}
-	// connMap entry should still exist.
+	// connMap 条目应仍然存在。
 	if _, ok := handler.connMap.Load(c.Fd()); !ok {
 		t.Error("connMap entry should still exist")
 	}
 }
 
 // =============================================================================
-// Transport tests
+// Transport 测试
 // =============================================================================
 
 func TestGnetTransportClose(t *testing.T) {
@@ -962,7 +962,7 @@ func TestGnetTransportWrite(t *testing.T) {
 }
 
 // =============================================================================
-// Compile-time interface check
+// 编译期接口检查
 // =============================================================================
 
 var _ gnet.Conn = (*mockGnetConn)(nil)

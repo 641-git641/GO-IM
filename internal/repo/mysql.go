@@ -10,30 +10,30 @@ import (
 
 	"github.com/im/api/proto"
 
-	_ "github.com/go-sql-driver/mysql" // MySQL driver registration
+	_ "github.com/go-sql-driver/mysql" // MySQL 驱动注册
 )
 
-// Compile-time interface compliance checks.
+// 编译期接口合规性检查。
 var (
 	_ UserStore    = (*MySQLStore)(nil)
 	_ MessageStore = (*MySQLStore)(nil)
 	_ FriendStore  = (*MySQLStore)(nil)
 )
 
-// MySQLStore implements UserStore and MessageStore backed by MySQL.
+// MySQLStore 基于 MySQL 实现 UserStore 与 MessageStore。
 type MySQLStore struct {
 	db *sql.DB
 }
 
-// NewMySQLStore opens a MySQL connection, verifies it, and creates tables.
-// The caller is responsible for closing the store via Close().
+// NewMySQLStore 打开 MySQL 连接，验证连接并创建表。
+// 调用方负责通过 Close() 关闭存储。
 func NewMySQLStore(dsn string) (*MySQLStore, error) {
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("mysql open: %w", err)
 	}
 
-	// Connection pool settings.
+	// 连接池设置。
 	db.SetMaxOpenConns(25)
 	db.SetMaxIdleConns(5)
 
@@ -52,23 +52,23 @@ func NewMySQLStore(dsn string) (*MySQLStore, error) {
 	return s, nil
 }
 
-// DB returns the underlying *sql.DB for use by other MySQL-backed stores
-// (e.g., MySQLGroupStore) that share the same connection pool.
+// DB 返回底层的 *sql.DB，供共享同一连接池的其他 MySQL 存储
+// （例如 MySQLGroupStore）使用。
 func (s *MySQLStore) DB() *sql.DB {
 	return s.db
 }
 
-// Ping checks the database connection health.
+// Ping 检查数据库连接的健康状况。
 func (s *MySQLStore) Ping(ctx context.Context) error {
 	return s.db.PingContext(ctx)
 }
 
-// Close releases the database connection pool.
+// Close 释放数据库连接池。
 func (s *MySQLStore) Close() error {
 	return s.db.Close()
 }
 
-// migrate creates tables if they do not exist.
+// migrate 在表不存在时创建表。
 func (s *MySQLStore) migrate() error {
 	userTable := `
 	CREATE TABLE IF NOT EXISTS users (
@@ -140,11 +140,11 @@ func (s *MySQLStore) migrate() error {
 		}
 	}
 
-	// Add FULLTEXT index for message search (best-effort).
+	// 为消息搜索添加 FULLTEXT 索引（尽力而为）。
 	ftsDDL := `ALTER TABLE messages ADD FULLTEXT INDEX ft_content (content) WITH PARSER ngram`
 	if _, err := s.db.Exec(ftsDDL); err != nil {
-		// MySQL error 1061 = duplicate index name — safe to ignore.
-		// Error 1128/1214 = ngram parser not supported or other schema issue — log as warning.
+		// MySQL 错误 1061 = 索引名重复 —— 可以安全忽略。
+		// 错误 1128/1214 = 不支持 ngram 解析器或其他 schema 问题 —— 记录为警告。
 		if strings.Contains(err.Error(), "Error 1061") {
 			log.Printf("[mysql] FULLTEXT index already exists (this is OK)")
 		} else {
@@ -152,7 +152,7 @@ func (s *MySQLStore) migrate() error {
 		}
 	}
 
-		// Add recalled column for existing databases (best-effort migration).
+		// 为现有数据库添加 recalled 列（尽力而为的迁移）。
 		recallDDL := `ALTER TABLE messages ADD COLUMN recalled TINYINT NOT NULL DEFAULT 0`
 		if _, err := s.db.Exec(recallDDL); err != nil {
 			if strings.Contains(err.Error(), "Error 1060") {
@@ -162,7 +162,7 @@ func (s *MySQLStore) migrate() error {
 			}
 		}
 
-		// Add role column for admin users (best-effort migration).
+		// 为管理员用户添加 role 列（尽力而为的迁移）。
 		roleDDL := `ALTER TABLE users ADD COLUMN role VARCHAR(16) NOT NULL DEFAULT 'user'`
 		if _, err := s.db.Exec(roleDDL); err != nil {
 			if strings.Contains(err.Error(), "Error 1060") {
@@ -172,7 +172,7 @@ func (s *MySQLStore) migrate() error {
 			}
 		}
 
-		// Add is_disabled column for disabling users (best-effort migration).
+		// 添加 is_disabled 列用于禁用用户（尽力而为的迁移）。
 		disabledDDL := `ALTER TABLE users ADD COLUMN is_disabled TINYINT NOT NULL DEFAULT 0`
 		if _, err := s.db.Exec(disabledDDL); err != nil {
 			if strings.Contains(err.Error(), "Error 1060") {
@@ -184,9 +184,9 @@ func (s *MySQLStore) migrate() error {
 	return nil
 }
 
-// ---------- UserStore implementation ----------
+// ---------- UserStore 实现 ----------
 
-// Create inserts a new user. Returns an error if the UID already exists.
+// Create 插入一个新用户。如果 UID 已存在则返回错误。
 func (s *MySQLStore) Create(ctx context.Context, u *User) error {
 	_, err := s.db.ExecContext(ctx,
 		"INSERT INTO users (uid, username, password_hash, created_at) VALUES (?, ?, ?, ?)",
@@ -198,8 +198,8 @@ func (s *MySQLStore) Create(ctx context.Context, u *User) error {
 	return nil
 }
 
-// UpdatePassword updates a user's password hash.
-// Returns an error if the UID does not exist.
+// UpdatePassword 更新用户的密码哈希。
+// 如果 UID 不存在则返回错误。
 func (s *MySQLStore) UpdatePassword(ctx context.Context, uid, newPasswordHash string) error {
 	result, err := s.db.ExecContext(ctx,
 		"UPDATE users SET password_hash = ? WHERE uid = ?",
@@ -215,7 +215,7 @@ func (s *MySQLStore) UpdatePassword(ctx context.Context, uid, newPasswordHash st
 	return nil
 }
 
-// GetByUID retrieves a user by UID. Returns nil if not found.
+// GetByUID 按 UID 获取用户。未找到时返回 nil。
 func (s *MySQLStore) GetByUID(ctx context.Context, uid string) (*User, error) {
 	u := &User{}
 	err := s.db.QueryRowContext(ctx,
@@ -230,9 +230,9 @@ func (s *MySQLStore) GetByUID(ctx context.Context, uid string) (*User, error) {
 	return u, nil
 }
 
-// ---------- MessageStore implementation ----------
+// ---------- MessageStore 实现 ----------
 
-// Save persists a chat message to the message history.
+// Save 将一条聊天消息持久化到消息历史记录。
 func (s *MySQLStore) Save(ctx context.Context, msg *proto.Message) error {
 	needAck := 0
 	if msg.NeedAck {
@@ -250,9 +250,9 @@ func (s *MySQLStore) Save(ctx context.Context, msg *proto.Message) error {
 	return nil
 }
 
-// RecallMessage marks a message as recalled by setting its content and recalled flag.
-// Only the original sender can recall their own message, and only within the recall window
-// (recallWindowMs milliseconds since the message was sent). Returns an error if no row was matched.
+// RecallMessage 通过设置内容与 recalled 标记将消息标记为已撤回。
+// 只有原始发送者可以撤回自己的消息，且只能在撤回时间窗口内
+// （自消息发送起 recallWindowMs 毫秒）。如果没有匹配的行则返回错误。
 func (s *MySQLStore) RecallMessage(ctx context.Context, msgID int64, fromUID string, recallWindowMs int64) error {
 	cutoff := time.Now().UnixMilli() - recallWindowMs
 	result, err := s.db.ExecContext(ctx,
@@ -269,8 +269,8 @@ func (s *MySQLStore) RecallMessage(ctx context.Context, msgID int64, fromUID str
 	return nil
 }
 
-// UpdateMessageContent updates the content of a previously stored message.
-// Only the author (fromUID) can edit their own messages.
+// UpdateMessageContent 更新已存储消息的内容。
+// 只有作者（fromUID）可以编辑自己的消息。
 func (s *MySQLStore) UpdateMessageContent(ctx context.Context, msgID int64, fromUID, newContent string) error {
 	result, err := s.db.ExecContext(ctx,
 		`UPDATE messages SET content = ? WHERE msg_id = ? AND from_uid = ?`,
@@ -286,9 +286,9 @@ func (s *MySQLStore) UpdateMessageContent(ctx context.Context, msgID int64, from
 	return nil
 }
 
-// QueryHistory returns messages between two users, ordered newest-first.
-// before is a timestamp in unix millis; only messages older than this are returned.
-// limit caps the result count (max 200).
+// QueryHistory 返回两个用户之间的消息，按时间从新到旧排序。
+// before 是毫秒级 Unix 时间戳；只返回早于该时间戳的消息。
+// limit 限制结果数量（最大 200）。
 func (s *MySQLStore) QueryHistory(ctx context.Context, uid1, uid2 string, before int64, limit int) ([]*proto.Message, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
@@ -330,9 +330,9 @@ func (s *MySQLStore) QueryHistory(ctx context.Context, uid1, uid2 string, before
 	return msgs, nil
 }
 
-// QueryGroupHistory returns messages sent to a group, ordered newest-first.
-// before is a timestamp in unix millis; only messages older than this are returned.
-// limit caps the result count (max 200).
+// QueryGroupHistory 返回发送到群组的消息，按时间从新到旧排序。
+// before 是毫秒级 Unix 时间戳；只返回早于该时间戳的消息。
+// limit 限制结果数量（最大 200）。
 func (s *MySQLStore) QueryGroupHistory(ctx context.Context, groupID string, before int64, limit int) ([]*proto.Message, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
@@ -373,8 +373,8 @@ func (s *MySQLStore) QueryGroupHistory(ctx context.Context, groupID string, befo
 	return msgs, nil
 }
 
-// SearchMessages performs a fulltext search on message content.
-// Access control: only returns messages where uid is a participant (from or to).
+// SearchMessages 对消息内容执行全文搜索。
+// 访问控制：只返回 uid 作为参与者（from 或 to）的消息。
 func (s *MySQLStore) SearchMessages(ctx context.Context, params *SearchParams) (*SearchResult, error) {
 	if params == nil {
 		return &SearchResult{}, nil
@@ -388,28 +388,28 @@ func (s *MySQLStore) SearchMessages(ctx context.Context, params *SearchParams) (
 		limit = 50
 	}
 
-	// Validate and sanitize query — empty or whitespace-only query returns empty results.
+	// 校验并清理查询 —— 空查询或纯空白查询返回空结果。
 	queryText := strings.TrimSpace(params.Query)
 	if queryText == "" {
 		return &SearchResult{}, nil
 	}
-	// Escape BOOLEAN MODE special characters to prevent query injection.
+	// 转义 BOOLEAN MODE 特殊字符以防止查询注入。
 	queryText = escapeBooleanMode(queryText)
 
-	// Build WHERE clause dynamically based on optional filters.
+	// 根据可选过滤条件动态构建 WHERE 子句。
 	query := `SELECT msg_id, seq, cmd, from_uid, to_uid, chat_type, msg_type, content, timestamp, need_ack, recalled
 		FROM messages
 		WHERE MATCH(content) AGAINST(? IN BOOLEAN MODE)`
 
 	args := []interface{}{queryText}
 
-	// Access control: user must be from_uid or to_uid.
+	// 访问控制：用户必须是 from_uid 或 to_uid。
 	if params.Peer != "" {
-		// Scoped to a specific conversation.
+		// 限定到特定会话。
 		query += ` AND ((from_uid = ? AND to_uid = ?) OR (from_uid = ? AND to_uid = ?))`
 		args = append(args, params.UID, params.Peer, params.Peer, params.UID)
 	} else {
-		// All conversations the user participates in.
+		// 用户参与的所有会话。
 		query += ` AND (from_uid = ? OR to_uid = ?)`
 		args = append(args, params.UID, params.UID)
 	}
@@ -436,7 +436,7 @@ func (s *MySQLStore) SearchMessages(ctx context.Context, params *SearchParams) (
 	}
 
 	query += ` ORDER BY timestamp DESC LIMIT ?`
-	args = append(args, limit+1) // fetch one extra to detect more pages
+	args = append(args, limit+1) // 多取一条以检测是否还有更多页
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -481,8 +481,8 @@ func (s *MySQLStore) SearchMessages(ctx context.Context, params *SearchParams) (
 	}, nil
 }
 
-// escapeBooleanMode escapes MySQL BOOLEAN MODE special characters
-// to prevent query injection. Characters: + - > < ( ) ~ * " @
+// escapeBooleanMode 转义 MySQL BOOLEAN MODE 特殊字符
+// 以防止查询注入。字符：+ - > < ( ) ~ * " @
 func escapeBooleanMode(s string) string {
 	replacer := strings.NewReplacer(
 		"+", `\+`,
@@ -499,13 +499,13 @@ func escapeBooleanMode(s string) string {
 	return replacer.Replace(s)
 }
 
-// ---------- FriendStore implementation ----------
+// ---------- FriendStore 实现 ----------
 
-// SendRequest sends a friend request from fromUID to toUID.
+// SendRequest 发送一条从 fromUID 到 toUID 的好友请求。
 func (s *MySQLStore) SendRequest(ctx context.Context, fromUID, toUID string) error {
 	now := timeNow()
-	// Insert with status=pending. The UNIQUE KEY prevents duplicate requests.
-	// If a request already exists in the opposite direction it's also caught.
+	// 以 status=pending 插入。UNIQUE KEY 防止重复请求。
+	// 反向已存在的请求也会被捕获。
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO friends (uid, friend_uid, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
 		fromUID, toUID, FriendStatusPending, now, now,
@@ -519,7 +519,7 @@ func (s *MySQLStore) SendRequest(ctx context.Context, fromUID, toUID string) err
 	return nil
 }
 
-// AcceptRequest accepts a pending friend request.
+// AcceptRequest 接受一条待处理的好友请求。
 func (s *MySQLStore) AcceptRequest(ctx context.Context, uid, fromUID string) error {
 	result, err := s.db.ExecContext(ctx,
 		`UPDATE friends SET status = ?, updated_at = ? WHERE uid = ? AND friend_uid = ? AND status = ?`,
@@ -535,7 +535,7 @@ func (s *MySQLStore) AcceptRequest(ctx context.Context, uid, fromUID string) err
 	return nil
 }
 
-// RejectRequest rejects a pending friend request.
+// RejectRequest 拒绝一条待处理的好友请求。
 func (s *MySQLStore) RejectRequest(ctx context.Context, uid, fromUID string) error {
 	result, err := s.db.ExecContext(ctx,
 		`UPDATE friends SET status = ?, updated_at = ? WHERE uid = ? AND friend_uid = ? AND status = ?`,
@@ -551,7 +551,7 @@ func (s *MySQLStore) RejectRequest(ctx context.Context, uid, fromUID string) err
 	return nil
 }
 
-// RemoveFriend removes a friend relationship (either direction).
+// RemoveFriend 移除一条好友关系（任意方向）。
 func (s *MySQLStore) RemoveFriend(ctx context.Context, uid, friendUID string) error {
 	result, err := s.db.ExecContext(ctx,
 		`DELETE FROM friends WHERE ((uid = ? AND friend_uid = ?) OR (uid = ? AND friend_uid = ?)) AND status = ?`,
@@ -567,7 +567,7 @@ func (s *MySQLStore) RemoveFriend(ctx context.Context, uid, friendUID string) er
 	return nil
 }
 
-// GetFriends returns all accepted friends for a user.
+// GetFriends 返回一个用户的所有已接受好友。
 func (s *MySQLStore) GetFriends(ctx context.Context, uid string) ([]*Friend, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT uid, friend_uid, status, created_at FROM friends
@@ -588,7 +588,7 @@ func (s *MySQLStore) GetFriends(ctx context.Context, uid string) ([]*Friend, err
 			return nil, fmt.Errorf("scan friend: %w", err)
 		}
 		f.Status = FriendStatus(status)
-		// Normalize: ensure the friend is always the "other" user.
+		// 规范化：确保好友始终是"对方"用户。
 		if f.UID == uid {
 			f.UID, f.FriendUID = f.FriendUID, f.UID
 		}
@@ -597,7 +597,7 @@ func (s *MySQLStore) GetFriends(ctx context.Context, uid string) ([]*Friend, err
 	return friends, rows.Err()
 }
 
-// GetPendingRequests returns all incoming pending friend requests for a user.
+// GetPendingRequests 返回一个用户收到的所有待处理好友请求。
 func (s *MySQLStore) GetPendingRequests(ctx context.Context, uid string) ([]*FriendRequest, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT f.uid, f.created_at, COALESCE(u.username, f.uid) as username
@@ -623,9 +623,9 @@ func (s *MySQLStore) GetPendingRequests(ctx context.Context, uid string) ([]*Fri
 	return requests, rows.Err()
 }
 
-// ---------- Admin UserStore methods ----------
+// ---------- 管理员 UserStore 方法 ----------
 
-// ListUsers returns a paginated list of all users ordered by creation time.
+// ListUsers 返回按创建时间排序的用户分页列表。
 func (s *MySQLStore) ListUsers(ctx context.Context, offset, limit int) ([]*User, int, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
@@ -659,7 +659,7 @@ func (s *MySQLStore) ListUsers(ctx context.Context, offset, limit int) ([]*User,
 	return users, total, rows.Err()
 }
 
-// DeleteUser deletes a user by UID. Returns an error if no rows were affected.
+// DeleteUser 按 UID 删除用户。如果没有行受影响则返回错误。
 func (s *MySQLStore) DeleteUser(ctx context.Context, uid string) error {
 	result, err := s.db.ExecContext(ctx, "DELETE FROM users WHERE uid = ?", uid)
 	if err != nil {
@@ -672,7 +672,7 @@ func (s *MySQLStore) DeleteUser(ctx context.Context, uid string) error {
 	return nil
 }
 
-// UpdateUserRole updates a user's role. Returns an error if no rows were affected.
+// UpdateUserRole 更新用户的角色。如果没有行受影响则返回错误。
 func (s *MySQLStore) UpdateUserRole(ctx context.Context, uid, role string) error {
 	result, err := s.db.ExecContext(ctx, "UPDATE users SET role = ? WHERE uid = ?", role, uid)
 	if err != nil {
@@ -685,7 +685,7 @@ func (s *MySQLStore) UpdateUserRole(ctx context.Context, uid, role string) error
 	return nil
 }
 
-// UpdateUserDisabled updates a user's disabled status. Returns an error if no rows were affected.
+// UpdateUserDisabled 更新用户的禁用状态。如果没有行受影响则返回错误。
 func (s *MySQLStore) UpdateUserDisabled(ctx context.Context, uid string, disabled bool) error {
 	val := 0
 	if disabled {
@@ -702,7 +702,7 @@ func (s *MySQLStore) UpdateUserDisabled(ctx context.Context, uid string, disable
 	return nil
 }
 
-// CountUsers returns the total number of registered users.
+// CountUsers 返回已注册用户的总数。
 func (s *MySQLStore) CountUsers(ctx context.Context) (int, error) {
 	var count int
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users").Scan(&count); err != nil {
@@ -711,9 +711,9 @@ func (s *MySQLStore) CountUsers(ctx context.Context) (int, error) {
 	return count, nil
 }
 
-// ---------- Admin MessageStore methods ----------
+// ---------- 管理员 MessageStore 方法 ----------
 
-// BrowseMessages returns recent messages globally (admin-only, no access control).
+// BrowseMessages 全局返回最近的消息（仅管理员，无访问控制）。
 func (s *MySQLStore) BrowseMessages(ctx context.Context, before int64, limit int) ([]*proto.Message, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
@@ -751,7 +751,7 @@ func (s *MySQLStore) BrowseMessages(ctx context.Context, before int64, limit int
 	return msgs, rows.Err()
 }
 
-// DeleteMessage deletes a message by ID (admin only).
+// DeleteMessage 按 ID 删除一条消息（仅管理员）。
 func (s *MySQLStore) DeleteMessage(ctx context.Context, msgID int64) error {
 	result, err := s.db.ExecContext(ctx, "DELETE FROM messages WHERE msg_id = ?", msgID)
 	if err != nil {
@@ -764,7 +764,7 @@ func (s *MySQLStore) DeleteMessage(ctx context.Context, msgID int64) error {
 	return nil
 }
 
-// CountMessages returns the total number of stored messages.
+// CountMessages 返回已存储消息的总数。
 func (s *MySQLStore) CountMessages(ctx context.Context) (int, error) {
 	var count int
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM messages").Scan(&count); err != nil {
@@ -773,7 +773,7 @@ func (s *MySQLStore) CountMessages(ctx context.Context) (int, error) {
 	return count, nil
 }
 
-// timeNow returns the current unix millis. Extracted for testability.
+// timeNow 返回当前毫秒级 Unix 时间戳。为可测试性而提取。
 func timeNow() int64 {
 	return time.Now().UnixMilli()
 }

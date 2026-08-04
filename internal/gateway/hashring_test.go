@@ -11,7 +11,7 @@ func TestHashRingGetConsistent(t *testing.T) {
 	hr.Add("gw-2")
 	hr.Add("gw-3")
 
-	// Same key should always return the same node.
+	// 相同的键应始终返回相同的节点。
 	first := hr.Get("alice")
 	if first == "" {
 		t.Fatal("Get on non-empty ring returned empty")
@@ -41,8 +41,8 @@ func TestHashRingGetDistribution(t *testing.T) {
 		counts[node]++
 	}
 
-	// With 150 virtual nodes each and 3000 keys, each node should get
-	// roughly 33% (1000 keys). Allow 25%-42% tolerance.
+	// 每个节点 150 个虚拟节点、3000 个键时，每个节点应获得
+	// 约 33%（1000 个键）。允许 25%-42% 的容差。
 	for node, count := range counts {
 		pct := float64(count) / float64(n) * 100
 		if pct < 25 || pct > 42 {
@@ -80,14 +80,14 @@ func TestHashRingSingleNode(t *testing.T) {
 func TestHashRingAddAndRemove(t *testing.T) {
 	hr := NewHashRing(150)
 
-	// 2 nodes: all keys distribute.
+	// 2 个节点：所有键均匀分布。
 	hr.Add("gw-1")
 	hr.Add("gw-2")
 	if hr.Len() != 2 {
 		t.Errorf("Len expected 2, got %d", hr.Len())
 	}
 
-	// Remove gw-2: all keys → gw-1.
+	// 移除 gw-2：所有键 → gw-1。
 	hr.Remove("gw-2")
 	if hr.Len() != 1 {
 		t.Errorf("Len after remove expected 1, got %d", hr.Len())
@@ -99,7 +99,7 @@ func TestHashRingAddAndRemove(t *testing.T) {
 		}
 	}
 
-	// Re-add gw-2: keys redistribute.
+	// 重新添加 gw-2：键重新分布。
 	hr.Add("gw-2")
 	if hr.Len() != 2 {
 		t.Errorf("Len after re-add expected 2, got %d", hr.Len())
@@ -117,7 +117,7 @@ func TestHashRingAddAndRemove(t *testing.T) {
 func TestHashRingRemoveNonExistent(t *testing.T) {
 	hr := NewHashRing(150)
 	hr.Add("gw-1")
-	// Should not panic.
+	// 不应 panic。
 	hr.Remove("nonexistent")
 	if hr.Len() != 1 {
 		t.Errorf("Len expected 1, got %d", hr.Len())
@@ -129,7 +129,7 @@ func TestHashRingReAdd(t *testing.T) {
 	hr.Add("gw-1")
 	first := hr.Get("alice")
 
-	// Re-adding the same node should be idempotent.
+	// 重新添加相同的节点应具有幂等性。
 	hr.Add("gw-1")
 	if got := hr.Get("alice"); got != first {
 		t.Errorf("Re-adding same node changed routing: %s → %s", first, got)
@@ -140,7 +140,7 @@ func TestHashRingReAdd(t *testing.T) {
 }
 
 func TestHashRingDefaultReplicas(t *testing.T) {
-	hr := NewHashRing(0) // 0 → default 150
+	hr := NewHashRing(0) // 0 → 默认 150
 	if hr.replicas != 150 {
 		t.Errorf("default replicas expected 150, got %d", hr.replicas)
 	}
@@ -156,8 +156,8 @@ func TestHashRingDefaultReplicas(t *testing.T) {
 	}
 }
 
-// Test that adding a node after keys are being looked up doesn't cause
-// issues (no data races, etc.)
+// 测试在键查找期间添加节点不会引起
+// 问题（无数据竞争等）。
 func TestHashRingConcurrentAddAndGet(t *testing.T) {
 	hr := NewHashRing(150)
 	hr.Add("gw-1")
@@ -182,6 +182,6 @@ func TestHashRingConcurrentAddAndGet(t *testing.T) {
 }
 
 func init() {
-	// Seed for distribution test.
+	// 为分布测试设置随机种子。
 	_ = rand.Int()
 }

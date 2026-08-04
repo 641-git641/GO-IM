@@ -7,22 +7,21 @@ import (
 	"sync"
 )
 
-// HashRing implements consistent hashing with virtual nodes for deterministic
-// routing of UIDs to Gateway nodes in a multi-node cluster.
+// HashRing 使用带虚拟节点的一致性哈希,在多节点集群中
+// 将 UID 确定性地路由到 Gateway 节点。
 //
-// Each physical node is represented by multiple virtual nodes (replicas)
-// distributed around the ring. When looking up a key, the ring finds the
-// first virtual node whose hash is >= the key's hash (wrapping to 0).
+// 每个物理节点由分布在环上的多个虚拟节点(副本)表示。
+// 查找键时,环会找到第一个哈希值 >= 键哈希值的虚拟节点(回绕到 0)。
 type HashRing struct {
 	mu        sync.RWMutex
-	ring      []uint32          // sorted slice of virtual node hashes
-	nodes     map[uint32]string // hash → physical nodeID
-	replicas  int               // virtual nodes per physical node
-	physCount int               // number of physical nodes (cached for O(1) Len)
+	ring      []uint32          // 虚拟节点哈希值的有序切片
+	nodes     map[uint32]string // 哈希 → 物理节点 ID
+	replicas  int               // 每个物理节点的虚拟节点数
+	physCount int               // 物理节点数量(缓存以便 Len 以 O(1) 完成)
 }
 
-// NewHashRing creates a HashRing with the given number of virtual replicas
-// per physical node. If replicas <= 0, defaults to 150.
+// NewHashRing 创建一个 HashRing,每个物理节点带给定数量的虚拟副本。
+// 如果 replicas <= 0,默认为 150。
 func NewHashRing(replicas int) *HashRing {
 	if replicas <= 0 {
 		replicas = 150
@@ -34,13 +33,13 @@ func NewHashRing(replicas int) *HashRing {
 	}
 }
 
-// Add inserts a physical node into the ring with its virtual replicas.
-// If the node already exists, its old replicas are removed first (idempotent).
+// Add 将物理节点及其虚拟副本插入环中。
+// 如果节点已存在,先移除其旧副本(幂等)。
 func (h *HashRing) Add(nodeID string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	// Remove any previous entries for this nodeID (idempotent re-registration).
+	// 移除该 nodeID 之前的所有记录(幂等重新注册)。
 	h.removeLocked(nodeID)
 	h.physCount++
 
@@ -53,16 +52,16 @@ func (h *HashRing) Add(nodeID string) {
 	sort.Slice(h.ring, func(i, j int) bool { return h.ring[i] < h.ring[j] })
 }
 
-// Remove deletes a physical node and all its virtual replicas from the ring.
+// Remove 从环中删除物理节点及其所有虚拟副本。
 func (h *HashRing) Remove(nodeID string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.removeLocked(nodeID)
 }
 
-// removeLocked removes a node's replicas without acquiring the lock.
+// removeLocked 不加锁地移除节点的副本。
 func (h *HashRing) removeLocked(nodeID string) {
-	// Collect hashes belonging to this node.
+	// 收集属于该节点的哈希值。
 	var toRemove []uint32
 	for hash, id := range h.nodes {
 		if id == nodeID {
@@ -75,12 +74,12 @@ func (h *HashRing) removeLocked(nodeID string) {
 
 	h.physCount--
 
-	// Delete from the nodes map.
+	// 从 nodes 映射中删除。
 	for _, hash := range toRemove {
 		delete(h.nodes, hash)
 	}
 
-	// Rebuild the ring slice excluding removed hashes.
+	// 重建环切片,排除已移除的哈希值。
 	filtered := make([]uint32, 0, len(h.ring)-len(toRemove))
 	for _, hash := range h.ring {
 		if _, exists := h.nodes[hash]; exists {
@@ -90,8 +89,8 @@ func (h *HashRing) removeLocked(nodeID string) {
 	h.ring = filtered
 }
 
-// Get returns the nodeID responsible for the given key.
-// Returns "" if the ring is empty.
+// Get 返回负责给定键的 nodeID。
+// 如果环为空则返回 ""。
 func (h *HashRing) Get(key string) string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -102,12 +101,12 @@ func (h *HashRing) Get(key string) string {
 
 	hash := crc32.ChecksumIEEE([]byte(key))
 
-	// Binary search for the first virtual node >= hash.
+	// 二分查找第一个 >= hash 的虚拟节点。
 	idx := sort.Search(len(h.ring), func(i int) bool {
 		return h.ring[i] >= hash
 	})
 
-	// Wrap around if we passed the end of the ring.
+	// 如果已越过环的末尾,则回绕到开头。
 	if idx >= len(h.ring) {
 		idx = 0
 	}
@@ -115,7 +114,7 @@ func (h *HashRing) Get(key string) string {
 	return h.nodes[h.ring[idx]]
 }
 
-// Len returns the number of physical nodes in the ring.
+// Len 返回环中物理节点的数量。
 func (h *HashRing) Len() int {
 	h.mu.RLock()
 	defer h.mu.RUnlock()

@@ -3,7 +3,7 @@ import { useChatStore } from '@/stores/chatStore';
 import ConversationItem from './ConversationItem';
 
 export default function ConversationList() {
-  // Subscribe to conversations Map directly so component re-renders on changes
+  // 直接订阅 conversations Map,以便变化时组件重新渲染
   const conversationsMap = useChatStore((s) => s.conversations);
   const conversations = Array.from(conversationsMap.values()).sort(
     (a, b) => b.lastTime - a.lastTime,

@@ -4,8 +4,8 @@ import { useAuthStore } from '@/stores/authStore';
 import './index.css';
 import App from './App.tsx';
 
-// Restore session BEFORE React renders. If we wait until LoginPage mounts,
-// AuthGate would see isLoggedIn=false and redirect before restore() runs.
+// 在 React 渲染之前恢复会话。若等到 LoginPage 挂载再恢复,
+// AuthGate 会看到 isLoggedIn=false 并在 restore() 运行前重定向。
 useAuthStore.getState().restore();
 
 createRoot(document.getElementById('root')!).render(

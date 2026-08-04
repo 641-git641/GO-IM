@@ -17,9 +17,9 @@ interface MessageBubbleProps {
   onForward?: (message: ChatMessage) => void;
   onEdit?: (msgId: string, newText: string) => void;
   onDelete?: (msgId: string) => void;
-  /** Search term for in-conversation highlighting */
+  /** 会话内高亮搜索词 */
   highlight?: string;
-  /** Whether this message is the current search match (for distinct styling) */
+  /** 该消息是否为当前搜索匹配项(用于特殊样式) */
   isCurrentMatch?: boolean;
 }
 
@@ -34,7 +34,7 @@ export default function MessageBubble({ message, isMine, showAvatar, onRecall, o
   const msgId = message.msgId;
   const time = formatTime(timestamp);
 
-  // Check if message can be recalled
+  // 检查消息是否可以撤回
   const canRecall =
     isMine &&
     !recalled &&
@@ -42,13 +42,13 @@ export default function MessageBubble({ message, isMine, showAvatar, onRecall, o
     msgId !== '0' &&
     Date.now() - Number(timestamp) < RECALL_WINDOW_MS;
 
-  // Check if message can be replied to
+  // 检查消息是否可以回复
   const canReply = !recalled && onReply && msgId !== '0';
 
-  // Check if message can be forwarded
+  // 检查消息是否可以转发
   const canForward = !recalled && onForward && msgId !== '0';
 
-  // Check if message can be edited (own text messages within time window)
+  // 检查消息是否可以编辑(自己的文本消息且在时间窗口内)
   const canEdit =
     isMine &&
     !recalled &&
@@ -57,12 +57,12 @@ export default function MessageBubble({ message, isMine, showAvatar, onRecall, o
     msgType === MsgType.Text &&
     Date.now() - Number(timestamp) < EDIT_WINDOW_MS;
 
-  // Check if message can be deleted locally
+  // 检查消息是否可以本地删除
   const canDelete = isMine && !recalled && onDelete && msgId !== '0';
 
   const avatarLetter = getAvatarLetters(message.from);
 
-  // Focus edit input when entering edit mode
+  // 进入编辑模式时聚焦编辑输入框
   useEffect(() => {
     if (editing && editInputRef.current) {
       editInputRef.current.focus();
@@ -70,7 +70,7 @@ export default function MessageBubble({ message, isMine, showAvatar, onRecall, o
     }
   }, [editing]);
 
-  // Handle save/cancel for inline edit
+  // 处理行内编辑的保存/取消
   const handleSaveEdit = () => {
     if (editText.trim() && editText !== displayText) {
       onEdit?.(msgId, editText.trim());
@@ -88,11 +88,11 @@ export default function MessageBubble({ message, isMine, showAvatar, onRecall, o
     setShowMenu(false);
   };
 
-  // Parse reply metadata from content
+  // 从内容中解析回复元数据
   const parsedContent = tryParseJSON<{ text?: string; reply_to?: ReplyTo; edited?: boolean; type?: string; username?: string; from_uid?: string; uid?: string; name?: string }>(content);
   const replyTo: ReplyTo | null = parsedContent?.reply_to || null;
 
-  // Compute display text: handle JSON system messages gracefully
+  // 计算展示文本:优雅处理 JSON 系统消息
   let displayText: string;
   if (parsedContent?.text) {
     displayText = parsedContent.text;
@@ -106,18 +106,18 @@ export default function MessageBubble({ message, isMine, showAvatar, onRecall, o
     displayText = content;
   }
 
-  // Check if current user is mentioned in the message
+  // 检查当前用户是否在消息中被提及
   const isMentioned =
     !recalled &&
     !isMine &&
     uid &&
     (content.includes('@' + uid) || displayText.includes('@' + uid));
 
-  // Render text with highlighted mentions and search highlights
+  // 渲染带高亮提及和搜索高亮的文本
   const renderText = (text: string): ReactNode => {
     if (!uid && !highlight) return <span className="whitespace-pre-wrap break-words">{text}</span>;
 
-    // If we have a search highlight, split by the search term (case-insensitive)
+    // 若有搜索高亮,按搜索词分割(不区分大小写)
     if (highlight && highlight.trim()) {
       const escaped = highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const regex = new RegExp(`(${escaped})`, 'gi');
@@ -139,7 +139,7 @@ export default function MessageBubble({ message, isMine, showAvatar, onRecall, o
                 </mark>
               );
             }
-            // Also apply mention styling within parts
+            // 在片段内同样应用提及样式
             if (part.startsWith('@') && part.slice(1) === uid) {
               return (
                 <span key={i} className="bg-primary-200 text-primary-800 px-0.5 rounded font-medium">
@@ -160,7 +160,7 @@ export default function MessageBubble({ message, isMine, showAvatar, onRecall, o
       );
     }
 
-    // Mention highlighting only (no search)
+    // 仅提及高亮(无搜索)
     const parts = text.split(/(@\S+)/g);
     return (
       <span className="whitespace-pre-wrap break-words">
@@ -188,7 +188,7 @@ export default function MessageBubble({ message, isMine, showAvatar, onRecall, o
     );
   };
 
-  // Render content based on type
+  // 按类型渲染内容
   const renderContent = () => {
     if (recalled) {
       return (
@@ -200,7 +200,7 @@ export default function MessageBubble({ message, isMine, showAvatar, onRecall, o
 
     switch (msgType) {
       case MsgType.Text:
-        // Show edit input when in edit mode
+        // 编辑模式下显示编辑输入框
         if (editing) {
           return (
             <div className="min-w-[200px]">
@@ -239,7 +239,7 @@ export default function MessageBubble({ message, isMine, showAvatar, onRecall, o
         }
         return (
           <div>
-            {/* Reply quote */}
+            {/* 回复引用 */}
             {replyTo && (
               <div className={`mb-1.5 px-2 py-1 rounded text-xs border-l-2 ${
                 isMine
@@ -250,7 +250,7 @@ export default function MessageBubble({ message, isMine, showAvatar, onRecall, o
               </div>
             )}
             {renderText(displayText)}
-            {/* Edited indicator */}
+            {/* 已编辑标记 */}
             {parsedContent?.edited && (
               <span className="text-[10px] text-gray-400 dark:text-gray-500 ml-1">(已编辑)</span>
             )}
@@ -300,7 +300,7 @@ export default function MessageBubble({ message, isMine, showAvatar, onRecall, o
       data-msg-id={msgId || message.seq}
       className={`message-enter flex gap-2 ${isMine ? 'flex-row-reverse' : 'flex-row'} ${showAvatar ? 'mt-3' : 'mt-0.5'} ${isCurrentMatch ? 'ring-2 ring-orange-400 rounded-lg p-1 -m-1' : ''}`}
     >
-      {/* Avatar */}
+      {/* 头像 */}
       {showAvatar ? (
         <div className="w-8 h-8 rounded-full bg-primary-500 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">
           {avatarLetter}
@@ -309,15 +309,15 @@ export default function MessageBubble({ message, isMine, showAvatar, onRecall, o
         <div className="w-8 flex-shrink-0" />
       )}
 
-      {/* Bubble */}
+      {/* 气泡 */}
       <div className={`group relative max-w-[75%] ${isMine ? 'items-end' : 'items-start'}`}>
-        {/* Sender name */}
+        {/* 发送者名称 */}
         {showAvatar && !isMine && (
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 ml-1">{message.from}</p>
         )}
 
         <div className="flex items-end gap-1">
-          {/* Context menu trigger */}
+          {/* 上下文菜单触发器 */}
           {(canRecall || canReply || canForward || canEdit || canDelete) && (
             <div className="relative opacity-0 group-hover:opacity-100 transition-opacity">
               <button
@@ -393,7 +393,7 @@ export default function MessageBubble({ message, isMine, showAvatar, onRecall, o
             </div>
           )}
 
-          {/* Bubble body */}
+          {/* 气泡主体 */}
           <div
             className={`px-3 py-2 rounded-2xl text-sm leading-relaxed ${
               recalled
@@ -409,7 +409,7 @@ export default function MessageBubble({ message, isMine, showAvatar, onRecall, o
           </div>
         </div>
 
-        {/* Time and status */}
+        {/* 时间和状态 */}
         <div className={`flex items-center gap-1 mt-0.5 ${isMine ? 'justify-end mr-1' : 'ml-1'}`}>
           <span className="text-[10px] text-gray-400 dark:text-gray-500">{time}</span>
           {isMine && status === 'sending' && (

@@ -21,23 +21,23 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// Server is the gateway server supporting WebSocket and/or gnet TCP transports.
+// Server 是支持 WebSocket 和/或 gnet TCP 传输的网关服务器。
 type Server struct {
 	clients    ClientRegistry
 	router     *Router
 	jwtMgr     *jwt.Manager
-	userStore  repo.UserStore   // nil when MySQL disabled
-	msgStore   repo.MessageStore // nil when MySQL disabled (admin APIs)
-	groupStore GroupStore       // nil when group chat disabled
+	userStore  repo.UserStore   // MySQL 禁用时为 nil
+	msgStore   repo.MessageStore // MySQL 禁用时为 nil(管理员 API)
+	groupStore GroupStore       // 群聊禁用时为 nil
 	authCfg    configs.AuthConfig
-	adminUIDs  map[string]bool // UIDs with admin privileges (from config)
+	adminUIDs  map[string]bool // 具有管理员权限的 UID(来自配置)
 	heartbeat  time.Duration
 	heartFail  int
 	connCfg    configs.GatewayConnConfig
 
-	snow        *snowflake.Generator // for generating file IDs
-	objectStore ObjectStore          // nil when file upload disabled
-	maxUpload   int64                // max upload size in bytes
+	snow        *snowflake.Generator // 用于生成文件 ID
+	objectStore ObjectStore          // 文件上传禁用时为 nil
+	maxUpload   int64                // 最大上传大小(字节)
 
 	// WebSocket
 	upgrader websocket.Upgrader
@@ -46,7 +46,7 @@ type Server struct {
 	gnetHandler *GnetHandler
 }
 
-// NewServer creates a gateway Server.
+// NewServer 创建一个网关 Server。
 func NewServer(clients ClientRegistry, router *Router, jwtMgr *jwt.Manager,
 	userStore repo.UserStore, msgStore repo.MessageStore, groupStore GroupStore,
 	authCfg configs.AuthConfig,
@@ -84,8 +84,8 @@ func NewServer(clients ClientRegistry, router *Router, jwtMgr *jwt.Manager,
 	return s
 }
 
-// buildOriginChecker returns an Origin check function.
-// An empty allowed list means allow all (development mode).
+// buildOriginChecker 返回一个 Origin 检查函数。
+// 允许列表为空表示允许所有来源(开发模式)。
 func buildOriginChecker(allowed []string) func(r *http.Request) bool {
 	if len(allowed) == 0 {
 		return func(r *http.Request) bool { return true }
@@ -97,13 +97,13 @@ func buildOriginChecker(allowed []string) func(r *http.Request) bool {
 	return func(r *http.Request) bool {
 		origin := r.Header.Get("Origin")
 		if origin == "" {
-			return true // same-origin requests have no Origin header
+			return true // 同源请求没有 Origin 头
 		}
 		return allowedSet[origin]
 	}
 }
 
-// Recovery wraps an http.Handler with panic recovery.
+// Recovery 用 panic 恢复包装一个 http.Handler。
 func Recovery(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
@@ -116,9 +116,9 @@ func Recovery(next http.Handler) http.Handler {
 	})
 }
 
-// HandleLogin is the HTTP endpoint for user login (returns JWT).
-// In dev mode (default), uid+username is sufficient.
-// In production mode, uid+password is required and validated against the user store.
+// HandleLogin 是用户登录的 HTTP 端点(返回 JWT)。
+// 开发模式(默认)下,仅需 uid+username。
+// 生产模式下,需要 uid+password,并与用户存储进行校验。
 func (s *Server) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -142,7 +142,7 @@ func (s *Server) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Password auth path.
+	// 密码认证路径。
 	role := "user"
 	if password != "" {
 		if s.userStore == nil {
@@ -166,22 +166,22 @@ func (s *Server) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		username = u.Username
 		role = u.Role
 	} else if !s.authCfg.DevMode {
-		// Production mode requires password.
+		// 生产模式要求密码。
 		http.Error(w, "password required", http.StatusUnauthorized)
 		return
 	}
 
-	// Dev mode: allow role override via form field for testing admin features.
+	// 开发模式:允许通过表单字段覆盖角色,用于测试管理员功能。
 	if s.authCfg.DevMode && r.FormValue("role") == "admin" {
 		role = "admin"
 	}
 
-	// Bootstrap admin UIDs from config (highest priority).
+	// 从配置引导管理员 UID(优先级最高)。
 	if s.adminUIDs[uid] {
 		role = "admin"
 	}
 
-	// Dev mode fallback: no password → use provided username (or uid).
+	// 开发模式回退:无密码 → 使用提供的 username(或 uid)。
 	if username == "" {
 		username = uid
 	}
@@ -201,8 +201,8 @@ func (s *Server) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// HandleRegister is the HTTP endpoint for user registration.
-// Requires uid, username, and password. Stores a bcrypt hash of the password.
+// HandleRegister 是用户注册的 HTTP 端点。
+// 需要 uid、username 和 password。保存密码的 bcrypt 哈希。
 func (s *Server) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -246,7 +246,7 @@ func (s *Server) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.userStore.Create(r.Context(), u); err != nil {
 		log.Printf("[server] register error for %s: %v", uid, err)
-		// MySQL error 1062 = duplicate entry; other errors are internal.
+		// MySQL 错误 1062 = 重复条目;其他错误为内部错误。
 		if strings.Contains(err.Error(), "Duplicate entry") || strings.Contains(err.Error(), "Error 1062") {
 			http.Error(w, "uid already exists", http.StatusConflict)
 		} else {
@@ -274,7 +274,7 @@ func (s *Server) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// HandleChangePassword validates the current password and updates to a new one.
+// HandleChangePassword 校验当前密码并更新为新密码。
 // POST /change-password  (body: uid, token, old_password, new_password)
 func (s *Server) HandleChangePassword(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -282,7 +282,7 @@ func (s *Server) HandleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate JWT — must be authenticated to change password.
+	// 校验 JWT —— 修改密码必须通过认证。
 	claims := s.authenticateRequest(w, r)
 	if claims == nil {
 		return
@@ -339,9 +339,9 @@ func (s *Server) HandleChangePassword(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// authenticateRequest extracts uid+token from form (POST) or query (GET) parameters,
-// validates the JWT, and returns the authenticated claims. On failure, it writes an
-// HTTP error response and returns nil. Callers must check for nil before proceeding.
+// authenticateRequest 从表单(POST)或查询(GET)参数中提取 uid+token,
+// 校验 JWT,并返回认证后的 claims。失败时写入
+// HTTP 错误响应并返回 nil。调用方在继续前必须检查 nil。
 func (s *Server) authenticateRequest(w http.ResponseWriter, r *http.Request) *jwt.Claims {
 	var uid, token string
 	if r.Method == http.MethodPost {
@@ -373,8 +373,8 @@ func (s *Server) authenticateRequest(w http.ResponseWriter, r *http.Request) *jw
 	return claims
 }
 
-// adminAuth authenticates the request and checks that the user is an admin.
-// Returns nil (with an HTTP error already written) on failure.
+// adminAuth 认证请求并检查用户是否为管理员。
+// 失败时返回 nil(并已写入 HTTP 错误响应)。
 func (s *Server) adminAuth(w http.ResponseWriter, r *http.Request) *jwt.Claims {
 	claims := s.authenticateRequest(w, r)
 	if claims == nil {
@@ -387,10 +387,10 @@ func (s *Server) adminAuth(w http.ResponseWriter, r *http.Request) *jwt.Claims {
 	return claims
 }
 
-// HandleOnlineUsers returns currently online users.
+// HandleOnlineUsers 返回当前在线用户。
 func (s *Server) HandleOnlineUsers(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	users := s.clients.OnlineUsers(ctx) // single call, reused below
+	users := s.clients.OnlineUsers(ctx) // 单次调用,下面复用
 	data, _ := json.Marshal(map[string]interface{}{
 		"count": len(users),
 		"users": users,
@@ -399,8 +399,8 @@ func (s *Server) HandleOnlineUsers(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// HandleGroupCreate creates a new chat group. The creator is auto-added as a member.
-// Optional 'members' parameter (comma-separated UIDs) adds initial members.
+// HandleGroupCreate 创建新的聊天群。创建者自动成为成员。
+// 可选的 'members' 参数(逗号分隔的 UID)用于添加初始成员。
 // POST /group/create?uid=alice&token=JWT&name=Dev%20Team&members=bob,charlie
 func (s *Server) HandleGroupCreate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -423,7 +423,7 @@ func (s *Server) HandleGroupCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse initial members (comma-separated UIDs).
+	// 解析初始成员(逗号分隔的 UID)。
 	var members []string
 	if membersStr := r.FormValue("members"); membersStr != "" {
 		for _, uid := range strings.Split(membersStr, ",") {
@@ -446,7 +446,7 @@ func (s *Server) HandleGroupCreate(w http.ResponseWriter, r *http.Request) {
 		memberList = append(memberList, uid)
 	}
 
-	// Notify invited members (skip self).
+	// 通知被邀请的成员(跳过自己)。
 	if len(members) > 0 {
 		s.router.sendGroupNotificationWithMembers(r.Context(), claims.UID, g.ID, "member_joined", memberList)
 	}
@@ -462,7 +462,7 @@ func (s *Server) HandleGroupCreate(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// HandleGroupJoin adds a user to a group.
+// HandleGroupJoin 将用户加入群。
 // POST /group/join?uid=bob&token=JWT&group_id=g_123456
 func (s *Server) HandleGroupJoin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -498,7 +498,7 @@ func (s *Server) HandleGroupJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Notify online group members via WebSocket/TCP.
+	// 通过 WebSocket/TCP 通知在线群成员。
 	s.router.sendGroupNotification(r.Context(), claims.UID, groupID, "member_joined")
 
 	data, _ := json.Marshal(map[string]string{"ok": "true"})
@@ -506,7 +506,7 @@ func (s *Server) HandleGroupJoin(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// HandleGroupInvite invites a user to a group. Only the group owner can invite others.
+// HandleGroupInvite 邀请用户入群。只有群主可以邀请他人。
 // POST /group/invite?uid=alice&token=JWT&group_id=g_123&target_uid=bob
 func (s *Server) HandleGroupInvite(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -538,7 +538,7 @@ func (s *Server) HandleGroupInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Only the group owner can invite members.
+	// 只有群主可以邀请成员。
 	g, err := s.groupStore.Get(r.Context(), groupID)
 	if err != nil {
 		http.Error(w, "group not found", http.StatusNotFound)
@@ -562,7 +562,7 @@ func (s *Server) HandleGroupInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Notify online group members via WebSocket/TCP.
+	// 通过 WebSocket/TCP 通知在线群成员。
 	s.router.sendGroupNotification(r.Context(), targetUID, groupID, "member_joined")
 
 	data, _ := json.Marshal(map[string]string{"ok": "true"})
@@ -570,7 +570,7 @@ func (s *Server) HandleGroupInvite(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// HandleGroupLeave removes a user from a group. If the group becomes empty, it is deleted.
+// HandleGroupLeave 将用户移出群。如果群变为空,则删除该群。
 // POST /group/leave?uid=alice&token=JWT&group_id=g_123456
 func (s *Server) HandleGroupLeave(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -606,7 +606,7 @@ func (s *Server) HandleGroupLeave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Notify online group members via WebSocket/TCP.
+	// 通过 WebSocket/TCP 通知在线群成员。
 	s.router.sendGroupNotification(r.Context(), claims.UID, groupID, "member_left")
 
 	data, _ := json.Marshal(map[string]string{"ok": "true"})
@@ -614,7 +614,7 @@ func (s *Server) HandleGroupLeave(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// HandleGroupKick allows the group owner to remove a member.
+// HandleGroupKick 允许群主移除成员。
 // POST /group/kick?uid=owner&token=JWT&group_id=g_123456&target_uid=bad_member
 func (s *Server) HandleGroupKick(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -638,7 +638,7 @@ func (s *Server) HandleGroupKick(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify requester is the group owner.
+	// 验证请求者是群主。
 	group, err := s.groupStore.Get(r.Context(), groupID)
 	if err != nil {
 		http.Error(w, "group not found", http.StatusNotFound)
@@ -664,7 +664,7 @@ func (s *Server) HandleGroupKick(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[server] group %s owner %s kicked %s", groupID, claims.UID, targetUID)
 
-	// Notify online group members via WebSocket/TCP.
+	// 通过 WebSocket/TCP 通知在线群成员。
 	s.router.sendGroupNotification(r.Context(), claims.UID, groupID, "member_kicked")
 
 	data, _ := json.Marshal(map[string]string{"ok": "true"})
@@ -672,7 +672,7 @@ func (s *Server) HandleGroupKick(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// HandleGroupRename allows the group owner to change the group name.
+// HandleGroupRename 允许群主修改群名称。
 // POST /group/rename?uid=owner&token=JWT&group_id=g_123456&name=New+Name
 func (s *Server) HandleGroupRename(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -696,7 +696,7 @@ func (s *Server) HandleGroupRename(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify requester is the group owner.
+	// 验证请求者是群主。
 	group, err := s.groupStore.Get(r.Context(), groupID)
 	if err != nil {
 		http.Error(w, "group not found", http.StatusNotFound)
@@ -715,7 +715,7 @@ func (s *Server) HandleGroupRename(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[server] group %s renamed to %q by %s", groupID, newName, claims.UID)
 
-	// Notify online group members via WebSocket/TCP.
+	// 通过 WebSocket/TCP 通知在线群成员。
 	s.router.sendGroupNotification(r.Context(), claims.UID, groupID, "group_renamed")
 
 	data, _ := json.Marshal(map[string]string{"ok": "true", "name": newName})
@@ -723,7 +723,7 @@ func (s *Server) HandleGroupRename(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// HandleGroupTransfer allows the group owner to transfer ownership to another member.
+// HandleGroupTransfer 允许群主将所有权转让给另一成员。
 // POST /group/transfer?uid=owner&token=JWT&group_id=g_123456&to_uid=new_owner
 func (s *Server) HandleGroupTransfer(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -769,7 +769,7 @@ func (s *Server) HandleGroupTransfer(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[server] group %s ownership transferred from %s to %s", groupID, claims.UID, toUID)
 
-	// Notify online group members via WebSocket/TCP.
+	// 通过 WebSocket/TCP 通知在线群成员。
 	s.router.sendGroupNotification(r.Context(), claims.UID, groupID, "owner_transferred")
 
 	data, _ := json.Marshal(map[string]string{"ok": "true", "owner_uid": toUID})
@@ -777,7 +777,7 @@ func (s *Server) HandleGroupTransfer(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// HandleGroupMembers returns the member list for a group.
+// HandleGroupMembers 返回群的成员列表。
 // GET /group/members?group_id=g_123456&uid=alice&token=JWT
 func (s *Server) HandleGroupMembers(w http.ResponseWriter, r *http.Request) {
 	if s.groupStore == nil {
@@ -789,7 +789,7 @@ func (s *Server) HandleGroupMembers(w http.ResponseWriter, r *http.Request) {
 	if claims == nil {
 		return
 	}
-	_ = claims // authenticated; uid may be used for future access control
+	_ = claims // 已认证;uid 可能用于将来的访问控制
 
 	groupID := r.URL.Query().Get("group_id")
 	if groupID == "" {
@@ -815,7 +815,7 @@ func (s *Server) HandleGroupMembers(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// HandleGroupList returns all groups the user is a member of.
+// HandleGroupList 返回用户所属的所有群。
 // GET /group/list?uid=alice&token=JWT
 func (s *Server) HandleGroupList(w http.ResponseWriter, r *http.Request) {
 	if s.groupStore == nil {
@@ -834,7 +834,7 @@ func (s *Server) HandleGroupList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Only expose safe fields (not internal member maps for all groups).
+	// 只暴露安全字段(不暴露所有群的内部成员映射)。
 	type groupInfo struct {
 		ID          string   `json:"id"`
 		Name        string   `json:"name"`
@@ -860,7 +860,7 @@ func (s *Server) HandleGroupList(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// HandleUnreadCount returns per-peer unread counts for a user.
+// HandleUnreadCount 返回用户的各会话未读计数。
 // GET /unread?uid=alice&token=JWT
 func (s *Server) HandleUnreadCount(w http.ResponseWriter, r *http.Request) {
 	claims := s.authenticateRequest(w, r)
@@ -881,9 +881,9 @@ func (s *Server) HandleUnreadCount(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// ---------- Friend management HTTP handlers ----------
+// ---------- 好友管理 HTTP 处理器 ----------
 
-// HandleFriendRequest sends a friend request.
+// HandleFriendRequest 发送好友请求。
 // POST /friend/request?uid=alice&token=JWT&to_uid=bob
 func (s *Server) HandleFriendRequest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -920,7 +920,7 @@ func (s *Server) HandleFriendRequest(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// HandleFriendAccept accepts a pending friend request.
+// HandleFriendAccept 接受待处理的好友请求。
 // POST /friend/accept?uid=alice&token=JWT&from_uid=bob
 func (s *Server) HandleFriendAccept(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -953,7 +953,7 @@ func (s *Server) HandleFriendAccept(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// HandleFriendReject rejects a pending friend request.
+// HandleFriendReject 拒绝待处理的好友请求。
 // POST /friend/reject?uid=alice&token=JWT&from_uid=bob
 func (s *Server) HandleFriendReject(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -986,7 +986,7 @@ func (s *Server) HandleFriendReject(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// HandleFriendRemove removes a friend relationship.
+// HandleFriendRemove 删除好友关系。
 // POST /friend/remove?uid=alice&token=JWT&friend_uid=bob
 func (s *Server) HandleFriendRemove(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -1019,7 +1019,7 @@ func (s *Server) HandleFriendRemove(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// HandleFriendList returns a user's friends and pending requests.
+// HandleFriendList 返回用户的好友和待处理请求。
 // GET /friend/list?uid=alice&token=JWT
 func (s *Server) HandleFriendList(w http.ResponseWriter, r *http.Request) {
 	claims := s.authenticateRequest(w, r)
@@ -1054,9 +1054,9 @@ func (s *Server) HandleFriendList(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// HandleUpload processes file/image uploads via multipart form.
-// POST /upload with fields: file, uid, token
-// Returns JSON with file metadata including a snowflake file_id.
+// HandleUpload 通过 multipart 表单处理文件/图片上传。
+// POST /upload 字段:file、uid、token
+// 返回包含 snowflake file_id 的文件元数据 JSON。
 func (s *Server) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -1068,13 +1068,13 @@ func (s *Server) HandleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Limit request body size.
+	// 限制请求体大小。
 	if s.maxUpload > 0 {
 		r.Body = http.MaxBytesReader(w, r.Body, s.maxUpload)
 	}
 
-	// Validate JWT BEFORE parsing the multipart form. This prevents
-	// unauthenticated attackers from consuming server memory via large uploads.
+	// 在解析 multipart 表单之前校验 JWT。这可以防止
+	// 未认证的攻击者通过大文件上传消耗服务器内存。
 	uid := r.FormValue("uid")
 	token := r.FormValue("token")
 	if uid == "" || token == "" {
@@ -1092,7 +1092,7 @@ func (s *Server) HandleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse multipart form (max memory equal to configured upload limit).
+	// 解析 multipart 表单(最大内存等于配置的上传上限)。
 	if err := r.ParseMultipartForm(s.maxUpload); err != nil {
 		http.Error(w, "file too large or invalid form: "+err.Error(), http.StatusRequestEntityTooLarge)
 		return
@@ -1108,7 +1108,7 @@ func (s *Server) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	// Read the file data.
+	// 读取文件数据。
 	data, err := io.ReadAll(file)
 	if err != nil {
 		log.Printf("[server] upload read error: %v", err)
@@ -1116,24 +1116,24 @@ func (s *Server) HandleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Reject empty files.
+	// 拒绝空文件。
 	if len(data) == 0 {
 		http.Error(w, "file is empty", http.StatusBadRequest)
 		return
 	}
 
-	// Detect MIME type from content.
+	// 从内容中检测 MIME 类型。
 	mime := http.DetectContentType(data)
 	fileName := header.Filename
 
-	// Generate file ID.
+	// 生成文件 ID。
 	fileID := strconv.FormatInt(s.snow.Next(), 10)
 
-	// Get image dimensions.
+	// 获取图片尺寸。
 	width, height := ImageDimensions(data)
 
-	// Generate thumbnail for images. Skip if dimensions are unreasonably
-	// large (decompression bomb defense — image.Decode allocates W×H×4 bytes).
+	// 为图片生成缩略图。如果尺寸过大则跳过
+	// (解压炸弹防御 —— image.Decode 会分配 W×H×4 字节)。
 	const maxImageDim = 4096
 	var thumbW, thumbH int
 	if IsImageMIME(mime) {
@@ -1156,10 +1156,10 @@ func (s *Server) HandleUpload(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Upload original to object store.
+	// 将原图上传到对象存储。
 	if err := s.objectStore.Put(r.Context(), fileID, data, mime); err != nil {
 		log.Printf("[server] upload %s failed: %v", fileID, err)
-		// Clean up thumbnail if original upload fails.
+		// 原图上传失败时清理缩略图。
 		if IsImageMIME(mime) {
 			_ = s.objectStore.Delete(r.Context(), fileID+"_thumb")
 		}
@@ -1184,7 +1184,7 @@ func (s *Server) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	w.Write(resp)
 }
 
-// HandleSearch performs fulltext search on message content.
+// HandleSearch 对消息内容执行全文搜索。
 // GET /search?uid=X&token=Y&q=hello[&peer=Z][&chat_type=1][&msg_type=1][&limit=20]
 func (s *Server) HandleSearch(w http.ResponseWriter, r *http.Request) {
 	uid := r.URL.Query().Get("uid")
@@ -1204,7 +1204,7 @@ func (s *Server) HandleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Rate limit search (expensive operation).
+	// 对搜索限流(开销较大的操作)。
 	if rl := s.router.checkRateLimit(uid); rl {
 		http.Error(w, "rate limited", http.StatusTooManyRequests)
 		return
@@ -1276,7 +1276,7 @@ func (s *Server) HandleSearch(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// HandleDownload serves file/image data from the object store.
+// HandleDownload 从对象存储提供文件/图片数据。
 // GET /file?id={file_id}[&thumb=1][&uid=uid&token=token]
 func (s *Server) HandleDownload(w http.ResponseWriter, r *http.Request) {
 	if s.objectStore == nil {
@@ -1290,7 +1290,7 @@ func (s *Server) HandleDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate JWT token.
+	// 校验 JWT 令牌。
 	uid := r.URL.Query().Get("uid")
 	token := r.URL.Query().Get("token")
 	if uid == "" || token == "" {
@@ -1307,7 +1307,7 @@ func (s *Server) HandleDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Serve thumbnail if requested.
+	// 如果请求了缩略图则提供缩略图。
 	key := fileID
 	if r.URL.Query().Get("thumb") == "1" {
 		key = fileID + "_thumb"
@@ -1325,25 +1325,25 @@ func (s *Server) HandleDownload(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// GnetHandler returns the gnet handler (nil if gnet is not active).
+// GnetHandler 返回 gnet 处理器(gnet 未启用时为 nil)。
 func (s *Server) GnetHandler() *GnetHandler {
 	return s.gnetHandler
 }
 
-// HealthChecker is a function that checks a dependency's health.
-// It returns nil if healthy, or an error describing the issue.
+// HealthChecker 是检查依赖健康状态的函数。
+// 健康时返回 nil,否则返回描述问题的错误。
 type HealthChecker func(ctx context.Context) error
 
-// healthCheckers stores registered dependency health checks.
+// healthCheckers 保存已注册的依赖健康检查。
 var healthCheckers = map[string]HealthChecker{}
 
-// RegisterHealthCheck registers a named health check function.
+// RegisterHealthCheck 注册一个具名的健康检查函数。
 func RegisterHealthCheck(name string, check HealthChecker) {
 	healthCheckers[name] = check
 }
 
-// HandleHealth is the HTTP handler for GET /health.
-// Returns enhanced status including dependency states and memory metrics.
+// HandleHealth 是 GET /health 的 HTTP 处理器。
+// 返回增强状态,包括依赖状态和内存指标。
 func (s *Server) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	deps := make(map[string]string, len(healthCheckers))
 	allHealthy := true
@@ -1359,7 +1359,7 @@ func (s *Server) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 
-	// Build response once, then set status based on health.
+	// 一次性构建响应,然后根据健康状况设置状态。
 	status := "ok"
 	if !allHealthy {
 		status = "degraded"
@@ -1378,9 +1378,9 @@ func (s *Server) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// ---------- Admin handlers ----------
+// ---------- 管理员处理器 ----------
 
-// HandleAdminStats returns aggregated system statistics for the admin dashboard.
+// HandleAdminStats 返回管理面板所需的系统统计汇总。
 // GET /admin/stats?uid=admin&token=JWT
 func (s *Server) HandleAdminStats(w http.ResponseWriter, r *http.Request) {
 	claims := s.adminAuth(w, r)
@@ -1389,7 +1389,7 @@ func (s *Server) HandleAdminStats(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = claims
 
-	// Reuse existing health-check infrastructure.
+	// 复用现有的健康检查基础设施。
 	deps := make(map[string]string, len(healthCheckers))
 	allHealthy := true
 	for name, check := range healthCheckers {
@@ -1434,7 +1434,7 @@ func (s *Server) HandleAdminStats(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// HandleAdminUsers returns a paginated list of all users.
+// HandleAdminUsers 返回所有用户的分页列表。
 // GET /admin/users?uid=admin&token=JWT&offset=0&limit=50
 func (s *Server) HandleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	claims := s.adminAuth(w, r)
@@ -1478,8 +1478,8 @@ func (s *Server) HandleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// HandleAdminUserDelete deletes a user by UID.
-// POST /admin/users/delete with form fields: uid (admin), token, target_uid
+// HandleAdminUserDelete 按 UID 删除用户。
+// POST /admin/users/delete 表单字段:uid(管理员)、token、target_uid
 func (s *Server) HandleAdminUserDelete(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -1516,7 +1516,7 @@ func (s *Server) HandleAdminUserDelete(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// HandleAdminMessages returns recent messages for content moderation.
+// HandleAdminMessages 返回最近的消息,用于内容审核。
 // GET /admin/messages?uid=admin&token=JWT&limit=50&before={ts}
 func (s *Server) HandleAdminMessages(w http.ResponseWriter, r *http.Request) {
 	claims := s.adminAuth(w, r)
@@ -1558,8 +1558,8 @@ func (s *Server) HandleAdminMessages(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// HandleAdminMessageDelete deletes a message by ID.
-// POST /admin/messages/delete with form fields: uid (admin), token, msg_id
+// HandleAdminMessageDelete 按 ID 删除消息。
+// POST /admin/messages/delete 表单字段:uid(管理员)、token、msg_id
 func (s *Server) HandleAdminMessageDelete(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -1598,18 +1598,18 @@ func (s *Server) HandleAdminMessageDelete(w http.ResponseWriter, r *http.Request
 	w.Write(data)
 }
 
-// HandleWS is defined in server_ws.go (WebSocket-specific code).
+// HandleWS 定义在 server_ws.go(WebSocket 专用代码)。
 
-// StartGNet initializes the gnet handler and starts the TCP server.
+// StartGNet 初始化 gnet 处理器并启动 TCP 服务器。
 func (s *Server) StartGNet(cfg *configs.Config) error {
 	gnetCfg := cfg.Gateway.GNet
 	numLoops := gnetCfg.NumEventLoops
 	if numLoops <= 0 {
-		numLoops = 0 // gnet uses runtime.NumCPU() when 0
+		numLoops = 0 // 为 0 时 gnet 使用 runtime.NumCPU()
 	}
 	workerPoolSize := gnetCfg.WorkerPoolSize
 	if workerPoolSize <= 0 {
-		workerPoolSize = 0 // will default in NewGnetHandler
+		workerPoolSize = 0 // 将在 NewGnetHandler 中取默认值
 	}
 
 	ctx := context.Background()

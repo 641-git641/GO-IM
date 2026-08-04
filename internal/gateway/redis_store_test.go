@@ -9,8 +9,8 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// newRedisTestStore creates a RedisOfflineStore backed by a miniredis instance.
-// The returned cleanup function stops the miniredis server.
+// newRedisTestStore 创建由 miniredis 实例支撑的 RedisOfflineStore。
+// 返回的清理函数会停止 miniredis 服务器。
 func newRedisTestStore(t *testing.T, maxSize int) (*RedisOfflineStore, func()) {
 	t.Helper()
 	mr, err := miniredis.Run()
@@ -25,7 +25,7 @@ func newRedisTestStore(t *testing.T, maxSize int) (*RedisOfflineStore, func()) {
 	}
 }
 
-// ---------- Map style (mirrors hub_test.go) ----------
+// ---------- 映射风格（与 hub_test.go 对应）----------
 
 func TestRedisStoreAndDrain(t *testing.T) {
 	rs, cleanup := newRedisTestStore(t, 100)
@@ -51,7 +51,7 @@ func TestRedisStoreAndDrain(t *testing.T) {
 		}
 	}
 
-	// Drain again should return empty
+	// 再次排空应返回空
 	empty := rs.DrainOffline(context.Background(), "alice")
 	if len(empty) != 0 {
 		t.Errorf("expected empty after drain, got %d messages", len(empty))
@@ -73,7 +73,7 @@ func TestRedisOfflineTruncation(t *testing.T) {
 	rs, cleanup := newRedisTestStore(t, maxSize)
 	defer cleanup()
 
-	// Store more than max
+	// 存储超过上限的消息
 	for i := 0; i < maxSize+5; i++ {
 		rs.StoreOffline(context.Background(), "alice", &proto.Message{MsgId: int64(i)})
 	}
@@ -83,7 +83,7 @@ func TestRedisOfflineTruncation(t *testing.T) {
 		t.Fatalf("expected %d messages after truncation, got %d", maxSize, len(drained))
 	}
 
-	// Oldest should be dropped (first 5), so first message should be msg #5
+	// 最旧的应被丢弃（前 5 条），因此第一条消息应为 #5
 	if drained[0].MsgId != 5 {
 		t.Errorf("expected oldest kept msg to be #5, got #%d", drained[0].MsgId)
 	}
@@ -167,7 +167,7 @@ func TestRedisMessageRoundTrip(t *testing.T) {
 	}
 }
 
-// ---------- Fallback tests ----------
+// ---------- 回退测试 ----------
 
 func TestRedisFallbackOnStoreError(t *testing.T) {
 	rs, cleanup := newRedisTestStore(t, 100)
@@ -176,14 +176,14 @@ func TestRedisFallbackOnStoreError(t *testing.T) {
 	hub := NewHub(100)
 	rs.WithFallback(hub)
 
-	// Close miniredis to force Redis errors
+	// 关闭 miniredis 以强制产生 Redis 错误
 	rs.client.Close()
 
-	// StoreOffline should fall back to Hub
+	// StoreOffline 应回退到 Hub
 	msg := &proto.Message{Cmd: proto.CmdChat, MsgId: 99, Content: "fallback test"}
 	rs.StoreOffline(context.Background(), "bob", msg)
 
-	// Drain should come from Hub (fallback), not Redis
+	// 排空应来自 Hub（回退），而不是 Redis
 	drained := hub.DrainOffline(context.Background(), "bob")
 	if len(drained) != 1 {
 		t.Fatalf("expected 1 message from fallback, got %d", len(drained))
@@ -200,13 +200,13 @@ func TestRedisFallbackOnDrainError(t *testing.T) {
 	hub := NewHub(100)
 	rs.WithFallback(hub)
 
-	// Store a message directly in Hub (simulating fallback store)
+	// 直接在 Hub 中存储一条消息（模拟回退存储）
 	hub.StoreOffline(context.Background(), "bob", &proto.Message{Cmd: proto.CmdChat, MsgId: 77, Content: "hub msg"})
 
-	// Close miniredis to force Redis errors
+	// 关闭 miniredis 以强制产生 Redis 错误
 	rs.client.Close()
 
-	// DrainOffline should fall back to Hub
+	// DrainOffline 应回退到 Hub
 	drained := rs.DrainOffline(context.Background(), "bob")
 	if len(drained) != 1 {
 		t.Fatalf("expected 1 message from fallback drain, got %d", len(drained))

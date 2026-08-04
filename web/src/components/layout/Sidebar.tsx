@@ -31,7 +31,7 @@ export default function Sidebar() {
 
   return (
     <aside className="w-16 lg:w-64 flex flex-col bg-gray-50 dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 flex-shrink-0">
-      {/* User info */}
+      {/* 用户信息 */}
       <div className="p-3 lg:p-4 border-b border-gray-200 dark:border-gray-800">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-full bg-primary-500 flex items-center justify-center text-white font-semibold text-sm flex-shrink-0">
@@ -42,7 +42,7 @@ export default function Sidebar() {
             <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{uid}</p>
           </div>
         </div>
-        {/* Connection status */}
+        {/* 连接状态 */}
         <div className="hidden lg:flex items-center gap-1.5 mt-2">
           <span
             className={`w-2 h-2 rounded-full ${
@@ -59,7 +59,7 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Navigation */}
+      {/* 导航 */}
       <nav className="flex-1 p-2 space-y-1">
         {isAdmin && (
           <NavLink
@@ -101,7 +101,7 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Logout */}
+      {/* 退出登录 */}
       <div className="p-2 border-t border-gray-200 dark:border-gray-800">
         <button
           onClick={handleLogout}

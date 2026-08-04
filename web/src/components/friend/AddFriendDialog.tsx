@@ -33,7 +33,7 @@ export default function AddFriendDialog({ open, onClose }: AddFriendDialogProps)
 
     try {
       await sendFriendRequest(trimmed);
-      // Real-time notification via WebSocket.
+      // 通过 WebSocket 实时通知。
       wsManager.send({
         seq: '0',
         msgId: '0',

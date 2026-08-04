@@ -17,7 +17,7 @@ export default function SearchPage() {
     search({ q: query.trim(), limit: 20 });
   };
 
-  /** Navigate to the conversation containing this message */
+  /** 跳转到包含该消息的会话 */
   const handleResultClick = (peerId: string) => {
     setActivePeer(peerId);
     navigate(`/chat/${peerId}`);
@@ -30,7 +30,7 @@ export default function SearchPage() {
       </div>
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Search bar */}
+        {/* 搜索栏 */}
         <form onSubmit={handleSubmit} className="p-4 border-b border-gray-100 dark:border-gray-800">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -44,7 +44,7 @@ export default function SearchPage() {
           </div>
         </form>
 
-        {/* Results */}
+        {/* 结果 */}
         <div className="flex-1 overflow-y-auto">
           {searching && (
             <div className="p-4 text-center text-sm text-gray-400">搜索中...</div>
@@ -66,7 +66,7 @@ export default function SearchPage() {
                 找到 {results.total} 条结果
               </div>
               {results.messages.map((msg) => {
-                // Determine the conversation peer: for single chat, use the other party; for group, use group ID
+                // 确定会话对象:单聊使用对方,群聊使用群组 ID
                 const peerId = msg.chat_type === 2 ? msg.to : (msg.from || msg.to);
                 return (
                   <div

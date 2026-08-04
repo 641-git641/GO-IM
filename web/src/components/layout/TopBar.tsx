@@ -7,7 +7,7 @@ interface TopBarProps {
   chatType?: number;
   isOnline?: boolean;
   onCall?: () => void;
-  /** Called when the Settings gear is clicked (group chat → GroupInfoPanel, single chat → FriendInfoPanel) */
+  /** 点击设置齿轮时调用(群聊 → GroupInfoPanel,单聊 → FriendInfoPanel) */
   onSettingsClick?: () => void;
 }
 

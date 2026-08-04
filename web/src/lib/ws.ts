@@ -1,16 +1,16 @@
 /**
- * WebSocket manager with protobuf binary encoding.
+ * 基于 protobuf 二进制编码的 WebSocket 管理器。
  *
- * Since @bufbuild/protobuf requires a build step (buf generate), we define
- * a lightweight manual encode/decode for the 10-field Message proto schema.
- * This avoids the codegen dependency and lets us iterate faster.
+ * 由于 @bufbuild/protobuf 需要构建步骤 (buf generate),我们为 10 字段的
+ * Message proto schema 实现了轻量级的手动编解码。
+ * 这样可以避免代码生成依赖,让我们迭代更快。
  *
- * Wire format (proto3 binary):
- *   Each field: (field_number << 3) | wire_type, followed by value
+ * 线上格式 (proto3 binary):
+ *   每个字段: (field_number << 3) | wire_type,后跟值
  *   wire_type 0 = varint (int32/int64/bool)
  *   wire_type 2 = length-delimited (string)
  *
- * Message fields:
+ * Message 字段:
  *   1: seq (int64, wire_type 0)
  *   2: msg_id (int64, wire_type 0)
  *   3: cmd (int32, wire_type 0)
@@ -30,7 +30,7 @@ import { getToken, clearAuth, saveAuth, isTokenExpired } from './auth';
 import { RECONNECT_DELAYS, MAX_RECONNECT_DELAY } from './constants';
 import { useAuthStore } from '@/stores/authStore';
 
-// ---- Protobuf encode/decode (minimal, dependency-free) ----
+// ---- Protobuf 编解码(极简、无依赖) ----
 
 const WireType = {
   Varint: 0,
@@ -76,23 +76,23 @@ function decodeBytes(data: Uint8Array, offset: number, length: number): string {
   return decoder.decode(data.slice(offset, offset + length));
 }
 
-/** Encode an IMMessage to protobuf binary */
+/** 将 IMMessage 编码为 protobuf 二进制 */
 export function encodeMessage(msg: IMMessage): Uint8Array {
   const parts: number[][] = [];
 
-  // Field 1: seq (int64)
+  // 字段 1: seq (int64)
   if (msg.seq && msg.seq !== '0') {
     parts.push([encodeTag(1, WireType.Varint), ...encodeVarint(BigInt(msg.seq))]);
   }
-  // Field 2: msg_id (int64)
+  // 字段 2: msg_id (int64)
   if (msg.msgId && msg.msgId !== '0') {
     parts.push([encodeTag(2, WireType.Varint), ...encodeVarint(BigInt(msg.msgId))]);
   }
-  // Field 3: cmd (int32)
+  // 字段 3: cmd (int32)
   if (msg.cmd) {
     parts.push([encodeTag(3, WireType.Varint), ...encodeVarint(BigInt(msg.cmd))]);
   }
-  // Field 4: from
+  // 字段 4: from
   if (msg.from) {
     const b = encodeBytes(msg.from);
     parts.push(
@@ -100,7 +100,7 @@ export function encodeMessage(msg: IMMessage): Uint8Array {
       Array.from(b),
     );
   }
-  // Field 5: to
+  // 字段 5: to
   if (msg.to) {
     const b = encodeBytes(msg.to);
     parts.push(
@@ -108,15 +108,15 @@ export function encodeMessage(msg: IMMessage): Uint8Array {
       Array.from(b),
     );
   }
-  // Field 6: chat_type
+  // 字段 6: chat_type
   if (msg.chatType) {
     parts.push([encodeTag(6, WireType.Varint), ...encodeVarint(BigInt(msg.chatType))]);
   }
-  // Field 7: msg_type
+  // 字段 7: msg_type
   if (msg.msgType) {
     parts.push([encodeTag(7, WireType.Varint), ...encodeVarint(BigInt(msg.msgType))]);
   }
-  // Field 8: content
+  // 字段 8: content
   if (msg.content) {
     const b = encodeBytes(msg.content);
     parts.push(
@@ -124,11 +124,11 @@ export function encodeMessage(msg: IMMessage): Uint8Array {
       Array.from(b),
     );
   }
-  // Field 9: timestamp
+  // 字段 9: timestamp
   if (msg.timestamp && msg.timestamp !== '0') {
     parts.push([encodeTag(9, WireType.Varint), ...encodeVarint(BigInt(msg.timestamp))]);
   }
-  // Field 10: need_ack
+  // 字段 10: need_ack
   if (msg.needAck) {
     parts.push([encodeTag(10, WireType.Varint), 1]);
   }
@@ -143,7 +143,7 @@ export function encodeMessage(msg: IMMessage): Uint8Array {
   return result;
 }
 
-/** Decode protobuf binary to IMMessage */
+/** 将 protobuf 二进制解码为 IMMessage */
 export function decodeMessage(data: Uint8Array): IMMessage | null {
   try {
     const msg: Partial<IMMessage> = {
@@ -198,12 +198,12 @@ export function decodeMessage(data: Uint8Array): IMMessage | null {
   }
 }
 
-// ---- Subscription types ----
+// ---- 订阅类型 ----
 
 export type MessageHandler = (msg: IMMessage) => void;
 type SubscriberMap = Map<CmdType, Set<MessageHandler>>;
 
-// ---- WSManager singleton ----
+// ---- WSManager 单例 ----
 
 class WSManager {
   private ws: WebSocket | null = null;
@@ -215,19 +215,19 @@ class WSManager {
   private seqCounter = 0;
   private loginTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  // Callbacks for store updates
+  // 供 store 更新的回调
   private onStatusChange?: (status: 'connecting' | 'connected' | 'disconnected') => void;
 
   setStatusCallback(cb: (status: 'connecting' | 'connected' | 'disconnected') => void) {
     this.onStatusChange = cb;
   }
 
-  /** Get next client sequence number */
+  /** 获取下一个客户端序列号 */
   nextSeq(): string {
     return String(++this.seqCounter);
   }
 
-  /** Connect to the WebSocket server */
+  /** 连接 WebSocket 服务器 */
   connect(token?: string): void {
     const t = token || getToken();
     if (!t) {
@@ -248,7 +248,7 @@ class WSManager {
       this.ws.onopen = () => {
         console.log('[WS] Connected');
         this.reconnectAttempt = 0;
-        // Set a timeout: if server doesn't send LoginResp within 10s, reconnect
+        // 设置超时:若服务器在 10 秒内未发送 LoginResp,则重连
         this.loginTimeout = setTimeout(() => {
           if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             console.log('[WS] LoginResp timeout — no server response');
@@ -290,7 +290,7 @@ class WSManager {
     }
   }
 
-  /** Disconnect gracefully */
+  /** 优雅断开连接 */
   disconnect(): void {
     this.intentionalClose = true;
     if (this.reconnectTimer) {
@@ -304,7 +304,7 @@ class WSManager {
     this.onStatusChange?.('disconnected');
   }
 
-  /** Send a message */
+  /** 发送一条消息 */
   send(msg: IMMessage): boolean {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       console.warn('[WS] Not connected, cannot send');
@@ -320,7 +320,7 @@ class WSManager {
     }
   }
 
-  /** Subscribe to messages of a specific Cmd */
+  /** 订阅指定 Cmd 的消息 */
   subscribe(cmd: CmdType, handler: MessageHandler): () => void {
     let handlers = this.subscribers.get(cmd);
     if (!handlers) {
@@ -333,18 +333,18 @@ class WSManager {
     };
   }
 
-  /** Subscribe to ALL messages (wildcard) */
+  /** 订阅所有消息(通配符) */
   subscribeAll(handler: MessageHandler): () => void {
-    // Using a special key: 0 (CmdNone) as wildcard
+    // 使用特殊键:0 (CmdNone) 作为通配符
     return this.subscribe(0 as CmdType, handler);
   }
 
-  /** Check connection state */
+  /** 检查连接状态 */
   isConnected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
-  /** Clear the LoginResp timeout (called when server confirms connection) */
+  /** 清除 LoginResp 超时(服务器确认连接时调用) */
   clearLoginTimeout(): void {
     if (this.loginTimeout) {
       clearTimeout(this.loginTimeout);
@@ -352,21 +352,21 @@ class WSManager {
     }
   }
 
-  /** Mark as kicked (stop reconnect) */
+  /** 标记为被踢下线(停止重连) */
   markKicked(): void {
     this.kicked = true;
     this.disconnect();
   }
 
-  // ---- Private ----
+  // ---- 私有 ----
 
   private dispatch(msg: IMMessage): void {
-    // Dispatch to specific cmd subscribers
+    // 分发给指定 cmd 的订阅者
     const handlers = this.subscribers.get(msg.cmd);
     if (handlers) {
       for (const h of handlers) h(msg);
     }
-    // Dispatch to wildcard subscribers
+    // 分发给通配符订阅者
     const allHandlers = this.subscribers.get(0 as CmdType);
     if (allHandlers) {
       for (const h of allHandlers) h(msg);
@@ -387,7 +387,7 @@ class WSManager {
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
 
-      // Check token expiry before reconnecting
+      // 重连前检查 token 是否过期
       if (isTokenExpired()) {
         console.log('[WS] Token expired, cannot reconnect');
         this.onStatusChange?.('disconnected');
@@ -401,5 +401,5 @@ class WSManager {
   }
 }
 
-// Export singleton
+// 导出单例
 export const wsManager = new WSManager();

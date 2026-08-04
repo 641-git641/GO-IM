@@ -12,8 +12,8 @@ import (
 
 const defaultKeyPrefix = "im:offline:"
 
-// RedisOfflineStore implements OfflineStore backed by Redis Lists.
-// An optional in-memory fallback (Hub) handles Redis failures gracefully.
+// RedisOfflineStore 实现基于 Redis List 的 OfflineStore。
+// 可选的内存回退(Hub)可优雅地处理 Redis 故障。
 type RedisOfflineStore struct {
 	client    *redis.Client
 	maxSize   int
@@ -21,8 +21,8 @@ type RedisOfflineStore struct {
 	fallback  OfflineStore
 }
 
-// NewRedisStore creates a Redis-backed offline message store.
-// The caller must ensure the client is connected (Ping succeeded).
+// NewRedisStore 创建基于 Redis 的离线消息存储。
+// 调用方必须确保客户端已连接(Ping 成功)。
 func NewRedisStore(client *redis.Client, maxSize int) *RedisOfflineStore {
 	return &RedisOfflineStore{
 		client:    client,
@@ -31,14 +31,14 @@ func NewRedisStore(client *redis.Client, maxSize int) *RedisOfflineStore {
 	}
 }
 
-// WithFallback sets an in-memory fallback for when Redis operations fail.
-// Typically this is the Hub, so messages are not lost if Redis is temporarily unavailable.
+// WithFallback 设置 Redis 操作失败时使用的内存回退。
+// 通常是 Hub,这样即使 Redis 暂时不可用,消息也不会丢失。
 func (rs *RedisOfflineStore) WithFallback(fb OfflineStore) *RedisOfflineStore {
 	rs.fallback = fb
 	return rs
 }
 
-// Close closes the underlying Redis client. Safe to call on nil receiver.
+// Close 关闭底层的 Redis 客户端。nil 接收者上调用也是安全的。
 func (rs *RedisOfflineStore) Close() error {
 	if rs == nil || rs.client == nil {
 		return nil
@@ -46,13 +46,13 @@ func (rs *RedisOfflineStore) Close() error {
 	return rs.client.Close()
 }
 
-// offlineKey returns the Redis key for a user's offline queue.
+// offlineKey 返回用户离线队列的 Redis 键。
 func (rs *RedisOfflineStore) offlineKey(uid string) string {
 	return rs.keyPrefix + uid
 }
 
-// Lua script: atomically push to list and trim to maxSize.
-// KEYS[1] = list key, ARGV[1] = protobuf binary payload, ARGV[2] = maxSize.
+// Lua 脚本:原子地向列表推送并裁剪到 maxSize。
+// KEYS[1] = 列表键,ARGV[1] = protobuf 二进制负载,ARGV[2] = maxSize。
 var storeScript = redis.NewScript(`
 	redis.call('RPUSH', KEYS[1], ARGV[1])
 	local len = redis.call('LLEN', KEYS[1])
@@ -63,8 +63,8 @@ var storeScript = redis.NewScript(`
 	return len
 `)
 
-// Lua script: atomically read all elements and delete the key.
-// KEYS[1] = list key.
+// Lua 脚本:原子地读取全部元素并删除该键。
+// KEYS[1] = 列表键。
 var drainScript = redis.NewScript(`
 	local msgs = redis.call('LRANGE', KEYS[1], 0, -1)
 	if #msgs > 0 then
@@ -73,8 +73,8 @@ var drainScript = redis.NewScript(`
 	return msgs
 `)
 
-// StoreOffline queues a message for an offline user.
-// Falls back to in-memory store if Redis is unavailable.
+// StoreOffline 为离线用户排队存储一条消息。
+// 如果 Redis 不可用,则回退到内存存储。
 func (rs *RedisOfflineStore) StoreOffline(ctx context.Context, uid string, msg *proto.Message) {
 	data, err := pb.Marshal(msg)
 	if err != nil {
@@ -95,8 +95,8 @@ func (rs *RedisOfflineStore) StoreOffline(ctx context.Context, uid string, msg *
 	}
 }
 
-// DrainOffline retrieves and clears all offline messages for a user.
-// Falls back to in-memory store if Redis is unavailable.
+// DrainOffline 检索并清除用户的所有离线消息。
+// 如果 Redis 不可用,则回退到内存存储。
 func (rs *RedisOfflineStore) DrainOffline(ctx context.Context, uid string) []*proto.Message {
 	key := rs.offlineKey(uid)
 	result, err := drainScript.Run(ctx, rs.client, []string{key}).Result()
@@ -110,7 +110,7 @@ func (rs *RedisOfflineStore) DrainOffline(ctx context.Context, uid string) []*pr
 
 	items, ok := result.([]interface{})
 	if !ok {
-		// No messages or unexpected type
+		// 没有消息或类型不符
 		return nil
 	}
 
@@ -130,5 +130,5 @@ func (rs *RedisOfflineStore) DrainOffline(ctx context.Context, uid string) []*pr
 	return msgs
 }
 
-// Ensure RedisOfflineStore implements OfflineStore.
+// 确保 RedisOfflineStore 实现了 OfflineStore。
 var _ OfflineStore = (*RedisOfflineStore)(nil)

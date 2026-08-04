@@ -14,7 +14,7 @@ export default function ConversationItem({ conversation, isActive, onClick }: Co
   const { name, peerId, lastMessage, lastTime, unread, chatType } = conversation;
   const contactStore = useContactStore();
 
-  // Resolve display name: for groups, prefer contactStore name over raw peerId
+  // 解析显示名称:对于群组,优先使用 contactStore 中的名称而非原始 peerId
   const displayName = (() => {
     if (name && name !== peerId) return name;
     if (peerId.startsWith('g_')) {
@@ -35,7 +35,7 @@ export default function ConversationItem({ conversation, isActive, onClick }: Co
         isActive ? 'bg-primary-50 dark:bg-primary-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800'
       }`}
     >
-      {/* Avatar */}
+      {/* 头像 */}
       <div className="relative flex-shrink-0">
         <div className="w-11 h-11 rounded-full bg-primary-500 flex items-center justify-center text-white font-semibold text-sm">
           {avatar}
@@ -47,7 +47,7 @@ export default function ConversationItem({ conversation, isActive, onClick }: Co
         )}
       </div>
 
-      {/* Content */}
+      {/* 内容 */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{displayName}</h3>

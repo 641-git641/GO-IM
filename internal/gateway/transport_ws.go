@@ -6,13 +6,13 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// wsTransport wraps a gorilla/websocket.Conn as a Transport.
+// wsTransport 将 gorilla/websocket.Conn 包装为 Transport。
 type wsTransport struct {
 	conn         *websocket.Conn
 	writeTimeout time.Duration
 }
 
-// newWsTransport creates a WebSocket Transport.
+// newWsTransport 创建一个 WebSocket Transport。
 func newWsTransport(conn *websocket.Conn) *wsTransport {
 	return &wsTransport{conn: conn, writeTimeout: 10 * time.Second}
 }

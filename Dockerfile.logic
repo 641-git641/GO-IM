@@ -1,4 +1,4 @@
-# Multi-stage build for IM Logic Service.
+# IM Logic 服务多阶段构建。
 # Build:   docker build -f Dockerfile.logic -t im-logic .
 # Run:     docker run -p 50051:50051 -v $(pwd)/configs:/etc/im im-logic
 
@@ -6,7 +6,7 @@ FROM golang:1.26.5-alpine AS builder
 
 WORKDIR /app
 
-# Accept proxy settings from build args (for VPN/accelerator users).
+# 从构建参数接受代理设置（供 VPN/加速器用户使用）。
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG NO_PROXY
@@ -14,19 +14,19 @@ ENV HTTP_PROXY=${HTTP_PROXY}
 ENV HTTPS_PROXY=${HTTPS_PROXY}
 ENV NO_PROXY=${NO_PROXY}
 
-# Use Go proxy mirror (goproxy.cn) as primary; direct fallback if VPN is active.
+# 优先使用 Go 代理镜像 (goproxy.cn)；若已开启 VPN 则直接回退到官方源。
 ENV GOPROXY=https://goproxy.cn,direct
 ENV GOSUMDB=sum.golang.org
 
-# Cache dependencies.
+# 缓存依赖。
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Build the binary.
+# 构建二进制文件。
 COPY . .
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o logic ./cmd/logic/
 
-# Minimal runtime image.
+# 最小化运行时镜像。
 FROM alpine:3.21
 
 RUN apk add --no-cache ca-certificates tzdata

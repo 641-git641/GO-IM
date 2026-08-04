@@ -9,23 +9,23 @@ import {
 } from '@/lib/api';
 
 interface AdminState {
-  // Dashboard
+  // 仪表盘
   stats: AdminStats | null;
   statsLoading: boolean;
   statsError: string | null;
 
-  // User management
+  // 用户管理
   users: AdminUser[];
   usersTotal: number;
   usersLoading: boolean;
   usersError: string | null;
 
-  // Content moderation
+  // 内容审核
   messages: SearchResultMessage[];
   messagesLoading: boolean;
   messagesError: string | null;
 
-  // Active tab
+  // 当前标签页
   activeTab: 'dashboard' | 'users' | 'messages';
 
   // Actions

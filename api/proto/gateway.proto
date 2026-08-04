@@ -5,22 +5,21 @@ option go_package = "github.com/im/api/proto;proto";
 
 import "message.proto";
 
-// ForwardRequest carries a message that needs to be delivered to a user
-// connected on a different Gateway node. The receiving Gateway unpacks the
-// message and delivers it locally.
+// ForwardRequest 携带需要投递给连接在另一个 Gateway 节点上的
+// 用户的消息。接收方 Gateway 解包该消息并在本地投递。
 message ForwardRequest {
-    Message message = 1; // the message to forward
-    string  uid     = 2; // target UID (redundant with message.To for routing clarity)
+    Message message = 1; // 要转发的消息
+    string  uid     = 2; // 目标 UID（与 message.To 冗余，便于路由清晰）
 }
 
-// ForwardResponse indicates whether the forward was delivered locally.
+// ForwardResponse 表示转发是否已在本地投递。
 message ForwardResponse {
-    bool   delivered      = 1; // true if the target was online and received the message
-    string error          = 2; // human-readable error description when not delivered
+    bool   delivered      = 1; // 目标在线并收到消息时为 true
+    string error          = 2; // 未投递时的人类可读错误描述
 }
 
-// Gateway provides inter-Gateway RPCs for cross-node message forwarding.
-// Implemented in Phase 4 (multi-node horizontal scaling) with GrpcForwarder + HashRing.
+// Gateway 提供用于跨节点消息转发的 Gateway 间 RPC。
+// 在 Phase 4（多节点水平扩展）中通过 GrpcForwarder + HashRing 实现。
 service Gateway {
     rpc ForwardMessage(ForwardRequest) returns (ForwardResponse);
 }

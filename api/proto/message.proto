@@ -3,17 +3,17 @@ syntax = "proto3";
 package im;
 option go_package = "github.com/im/api/proto;proto";
 
-// Message is the single wire-format message for all WebSocket communication.
-// The Cmd field discriminates message type (chat, heartbeat, ack, etc.).
+// Message 是所有 WebSocket 通信使用的唯一线上格式消息。
+// Cmd 字段用于区分消息类型（聊天、心跳、确认等）。
 message Message {
-    int64  seq       = 1;  // client sequence number (for dedup/ack)
-    int64  msg_id    = 2;  // server-assigned globally unique ID (snowflake)
-    int32  cmd       = 3;  // command discriminator (CmdNone=0, CmdChat=1, ...)
-    string from      = 4;  // sender UID (server-set, not trusted from client)
-    string to        = 5;  // receiver UID or group ID
-    int32  chat_type = 6;  // 1=single, 2=group
-    int32  msg_type  = 7;  // 1=text, 2=image, 3=voice, 4=video
-    string content   = 8;  // message body
-    int64  timestamp = 9;  // unix millisecond timestamp
-    bool   need_ack  = 10; // whether client expects ACK
+    int64  seq       = 1;  // 客户端序列号（用于去重/确认）
+    int64  msg_id    = 2;  // 服务器分配的全局唯一 ID（snowflake）
+    int32  cmd       = 3;  // 命令判别符（CmdNone=0、CmdChat=1 等）
+    string from      = 4;  // 发送者 UID（由服务器设置，不信任客户端）
+    string to        = 5;  // 接收者 UID 或群组 ID
+    int32  chat_type = 6;  // 1=单聊，2=群聊
+    int32  msg_type  = 7;  // 1=文本，2=图片，3=语音，4=视频
+    string content   = 8;  // 消息正文
+    int64  timestamp = 9;  // 毫秒级 Unix 时间戳
+    bool   need_ack  = 10; // 客户端是否期望 ACK
 }

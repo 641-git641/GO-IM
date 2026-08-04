@@ -15,12 +15,12 @@ export default function MentionSuggestions({
 }: MentionSuggestionsProps) {
   const ref = useRef<HTMLDivElement>(null);
 
-  // Filter members by query (case-insensitive)
+  // 按查询词过滤成员(不区分大小写)
   const filtered = members
     .filter((m) => m.toLowerCase().includes(query.toLowerCase()))
-    .slice(0, 8); // max 8 suggestions
+    .slice(0, 8); // 最多 8 条建议
 
-  // Close on click outside
+  // 点击外部时关闭
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
@@ -31,7 +31,7 @@ export default function MentionSuggestions({
     return () => document.removeEventListener('mousedown', handler);
   }, [onClose]);
 
-  // Close on escape
+  // 按 Escape 时关闭
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {

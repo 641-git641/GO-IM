@@ -8,20 +8,20 @@ import (
 	"github.com/im/api/proto"
 )
 
-// Hub manages all connected clients and routes messages between them.
+// Hub 管理所有已连接客户端并在它们之间路由消息。
 type Hub struct {
 	mu      sync.RWMutex
 	clients map[string]*Client // UID -> Client
 
-	// offline stores messages for offline users: UID -> message queue
+	// offline 为离线用户存储消息:UID -> 消息队列
 	offline        map[string][]*proto.Message
 	offlineMu      sync.Mutex
-	offlineMaxSize int // max queued messages per user
+	offlineMaxSize int // 每个用户的最大排队消息数
 
-	maxConnections int // 0 = unlimited
+	maxConnections int // 0 = 无限制
 }
 
-// NewHub creates a new Hub.
+// NewHub 创建一个新的 Hub。
 func NewHub(offlineMaxSize int) *Hub {
 	return &Hub{
 		clients:        make(map[string]*Client),
@@ -30,28 +30,27 @@ func NewHub(offlineMaxSize int) *Hub {
 	}
 }
 
-// SetMaxConnections sets the global connection limit. 0 means unlimited.
+// SetMaxConnections 设置全局连接数上限。0 表示无限制。
 func (h *Hub) SetMaxConnections(max int) {
 	h.mu.Lock()
 	h.maxConnections = max
 	h.mu.Unlock()
 }
 
-// ErrServerFull is returned (as a kick message) when the server is at capacity.
+// 服务器容量已满时,ErrServerFull 会以踢出消息的形式被返回。
 const errServerFull = "server at capacity, please try later"
 
-// Register adds a client to the hub.
-// If a connection already exists for this UID, it is sent a kick notification
-// before being closed. Returns an error if the server is at capacity and this
-// is a new UID (not replacing an existing connection).
+// Register 将客户端添加到 hub。
+// 如果该 UID 已存在连接,旧连接在关闭前会收到踢出通知。
+// 当服务器容量已满且这是新 UID(非替换现有连接)时,返回错误。
 func (h *Hub) Register(ctx context.Context, c *Client) {
 	h.mu.Lock()
 	old, exists := h.clients[c.UID]
 
-	// Enforce max connections — only for new UIDs.
+	// 强制连接数上限 —— 仅针对新 UID。
 	if !exists && h.maxConnections > 0 && len(h.clients) >= h.maxConnections {
 		h.mu.Unlock()
-		// Reject: send kick and close (best-effort).
+		// 拒绝:发送踢出消息并关闭连接(尽力而为)。
 		c.Send(&proto.Message{
 			Cmd:     proto.CmdKick,
 			Content: errServerFull,
@@ -61,14 +60,13 @@ func (h *Hub) Register(ctx context.Context, c *Client) {
 		return
 	}
 
-	// Replace the map entry BEFORE releasing the lock to prevent a race
-	// where another goroutine could register a different client between
-	// old.Close() and the map write.
+	// 在释放锁之前替换映射条目,以防竞态:
+	// 否则另一个 goroutine 可能在 old.Close() 与写入映射之间注册不同客户端。
 	h.clients[c.UID] = c
 	h.mu.Unlock()
 
-	// Now safe to notify and close the old connection outside the lock.
-	// This prevents network I/O from blocking other Register/Unregister calls.
+	// 现在可以在锁外安全地通知并关闭旧连接。
+	// 这能防止网络 I/O 阻塞其他 Register/Unregister 调用。
 	if exists {
 		old.Send(&proto.Message{
 			Cmd:     proto.CmdKick,
@@ -78,9 +76,8 @@ func (h *Hub) Register(ctx context.Context, c *Client) {
 	}
 }
 
-// Unregister removes a client from the hub, but only if the map entry
-// is the same *Client. This prevents a stale connection's cleanup from
-// accidentally removing a newer connection for the same UID.
+// Unregister 将客户端从 hub 中移除,但仅当映射条目是同一个 *Client 时。
+// 这能防止过期连接的清理误删同一 UID 的新连接。
 func (h *Hub) Unregister(ctx context.Context, c *Client) {
 	h.mu.Lock()
 	if existing, ok := h.clients[c.UID]; ok && existing == c {
@@ -89,14 +86,14 @@ func (h *Hub) Unregister(ctx context.Context, c *Client) {
 	h.mu.Unlock()
 }
 
-// Get returns the client for the given UID, or nil.
+// Get 返回指定 UID 的客户端,不存在时返回 nil。
 func (h *Hub) Get(ctx context.Context, uid string) *Client {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.clients[uid]
 }
 
-// IsOnline returns true if the user is online.
+// IsOnline 如果用户在线则返回 true。
 func (h *Hub) IsOnline(ctx context.Context, uid string) bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -104,8 +101,8 @@ func (h *Hub) IsOnline(ctx context.Context, uid string) bool {
 	return ok
 }
 
-// StoreOffline queues a message for an offline user.
-// When the queue exceeds the configured max, oldest messages are dropped and logged.
+// StoreOffline 为离线用户排队存储一条消息。
+// 当队列超过配置上限时,丢弃最旧的消息并记录日志。
 func (h *Hub) StoreOffline(ctx context.Context, uid string, msg *proto.Message) {
 	h.offlineMu.Lock()
 	h.offline[uid] = append(h.offline[uid], msg)
@@ -117,7 +114,7 @@ func (h *Hub) StoreOffline(ctx context.Context, uid string, msg *proto.Message) 
 	h.offlineMu.Unlock()
 }
 
-// DrainOffline returns and clears offline messages for a user.
+// DrainOffline 返回并清除用户的离线消息。
 func (h *Hub) DrainOffline(ctx context.Context, uid string) []*proto.Message {
 	h.offlineMu.Lock()
 	msgs := h.offline[uid]
@@ -126,7 +123,7 @@ func (h *Hub) DrainOffline(ctx context.Context, uid string) []*proto.Message {
 	return msgs
 }
 
-// OnlineUsers returns a list of currently online UIDs.
+// OnlineUsers 返回当前在线 UID 的列表。
 func (h *Hub) OnlineUsers(ctx context.Context) []string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -137,7 +134,7 @@ func (h *Hub) OnlineUsers(ctx context.Context) []string {
 	return uids
 }
 
-// Count returns the number of connected clients.
+// Count 返回已连接客户端的数量。
 func (h *Hub) Count(ctx context.Context) int {
 	h.mu.RLock()
 	defer h.mu.RUnlock()

@@ -7,7 +7,7 @@ import (
 	"github.com/im/api/proto"
 )
 
-// TestNewServer constructs a server without panicking.
+// TestNewServer 构造服务器而不触发 panic。
 func TestNewServer(t *testing.T) {
 	srv := NewServer(nil, 0)
 	if srv == nil {
@@ -15,9 +15,9 @@ func TestNewServer(t *testing.T) {
 	}
 }
 
-// TestServerGetUserNilMySQL returns Found=false gracefully when mysql is nil.
+// TestServerGetUserNilMySQL 在 mysql 为 nil 时优雅地返回 Found=false。
 func TestServerGetUserNilMySQL(t *testing.T) {
-	srv := &Server{} // no mysql, no userRepo
+	srv := &Server{} // 没有 mysql，没有 userRepo
 
 	req := &proto.UserRequest{Uid: "alice"}
 	resp, err := srv.GetUser(context.Background(), req)
@@ -29,7 +29,7 @@ func TestServerGetUserNilMySQL(t *testing.T) {
 	}
 }
 
-// TestServerGetUserNilRepo checks safety when userRepo is nil.
+// TestServerGetUserNilRepo 检查 userRepo 为 nil 时的安全性。
 func TestServerGetUserNilRepo(t *testing.T) {
 	srv := &Server{userRepo: nil}
 
@@ -43,7 +43,7 @@ func TestServerGetUserNilRepo(t *testing.T) {
 	}
 }
 
-// TestServerQueryHistoryNilMySQL panics (expected — this requires MySQL).
+// TestServerQueryHistoryNilMySQL 会 panic（预期行为 —— 这需要 MySQL）。
 func TestServerQueryHistoryRequiresMySQL(t *testing.T) {
 	t.Skip("QueryHistory requires a real *repo.MySQLStore — tested via integration tests")
 }

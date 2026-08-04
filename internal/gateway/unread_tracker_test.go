@@ -43,16 +43,16 @@ func TestUnreadTrackerMarkReadIdempotent(t *testing.T) {
 	ut := newTestUnreadTracker(t)
 	ctx := context.Background()
 
-	// MarkRead on a non-existent user should not panic or create entries.
+	// 对不存在的用户调用 MarkRead 不应 panic 或创建条目。
 	ut.MarkRead(ctx, "nonexistent", "peer")
 	if c := ut.GetCount(ctx, "nonexistent", "peer"); c != 0 {
 		t.Errorf("expected count 0, got %d", c)
 	}
 
-	// MarkRead on a zero entry should remain zero.
+	// 对零条目调用 MarkRead 后应保持为零。
 	ut.Increment(ctx, "bob", "alice")
 	ut.MarkRead(ctx, "bob", "alice")
-	ut.MarkRead(ctx, "bob", "alice") // second MarkRead
+	ut.MarkRead(ctx, "bob", "alice") // 第二次 MarkRead
 	if c := ut.GetCount(ctx, "bob", "alice"); c != 0 {
 		t.Errorf("expected count 0 after double MarkRead, got %d", c)
 	}
@@ -95,12 +95,12 @@ func TestUnreadTrackerGetCount(t *testing.T) {
 	ut := newTestUnreadTracker(t)
 	ctx := context.Background()
 
-	// Unknown uid returns 0.
+	// 未知 uid 返回 0。
 	if c := ut.GetCount(ctx, "unknown", "alice"); c != 0 {
 		t.Errorf("expected 0 for unknown uid, got %d", c)
 	}
 
-	// Known uid, unknown peer returns 0.
+	// 已知 uid、未知 peer 返回 0。
 	ut.Increment(ctx, "bob", "alice")
 	if c := ut.GetCount(ctx, "bob", "carol"); c != 0 {
 		t.Errorf("expected 0 for unknown peer, got %d", c)
@@ -116,7 +116,7 @@ func TestUnreadTrackerSelfIncrement(t *testing.T) {
 		t.Errorf("expected 0 for self-increment, got %d", c)
 	}
 
-	// GetCounts should not include empty entries.
+	// GetCounts 不应包含空条目。
 	counts := ut.GetCounts(ctx, "alice")
 	if len(counts) != 0 {
 		t.Errorf("expected empty counts after self-increment, got %d", len(counts))
@@ -149,7 +149,7 @@ func TestUnreadTrackerCleanup(t *testing.T) {
 	ut := newTestUnreadTracker(t)
 	ctx := context.Background()
 
-	// Add then clear — outer map entry should be removed.
+	// 先添加再清除 —— 外层 map 条目应被移除。
 	ut.Increment(ctx, "bob", "alice")
 	ut.MarkRead(ctx, "bob", "alice")
 
@@ -158,7 +158,7 @@ func TestUnreadTrackerCleanup(t *testing.T) {
 		t.Errorf("expected empty counts after cleanup, got %d entries", len(counts))
 	}
 
-	// Verify no panic from internal state (outer map entry was cleaned).
+	// 验证内部状态不会导致 panic（外层 map 条目已被清理）。
 	ut.Increment(ctx, "bob", "carol")
 	if c := ut.GetCount(ctx, "bob", "carol"); c != 1 {
 		t.Errorf("expected count 1 after re-increment, got %d", c)

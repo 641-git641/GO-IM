@@ -19,19 +19,19 @@ export default function AdminPage() {
   const {
     activeTab,
     setActiveTab,
-    // Dashboard
+    // 仪表盘
     stats,
     statsLoading,
     statsError,
     fetchStats,
-    // Users
+    // 用户
     users,
     usersTotal,
     usersLoading,
     usersError,
     fetchUsers,
     removeUser,
-    // Messages
+    // 消息
     messages,
     messagesLoading,
     messagesError,
@@ -66,7 +66,7 @@ export default function AdminPage() {
   return (
     <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-950">
       <div className="max-w-6xl mx-auto p-6 space-y-6">
-        {/* Header */}
+        {/* 头部 */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">管理后台</h1>
@@ -74,7 +74,7 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* Tab bar */}
+        {/* 标签栏 */}
         <div className="flex gap-1 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-1">
           {tabs.map((tab) => {
             const Icon = tab.icon;
@@ -100,7 +100,7 @@ export default function AdminPage() {
           })}
         </div>
 
-        {/* Tab content */}
+        {/* 标签内容 */}
         {activeTab === 'dashboard' && (
           <DashboardTab stats={stats} loading={statsLoading} error={statsError} />
         )}
@@ -128,7 +128,7 @@ export default function AdminPage() {
   );
 }
 
-// ---- Dashboard Tab ----
+// ---- 仪表盘标签页 ----
 
 function DashboardTab({ stats, loading, error }: {
   stats: AdminStats | null;
@@ -153,7 +153,7 @@ function DashboardTab({ stats, loading, error }: {
 
   return (
     <div className="space-y-6">
-      {/* Stat cards */}
+      {/* 统计卡片 */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {cards.map((card) => (
           <div
@@ -167,7 +167,7 @@ function DashboardTab({ stats, loading, error }: {
         ))}
       </div>
 
-      {/* Dependencies */}
+      {/* 依赖服务 */}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">依赖服务状态</h2>
@@ -191,7 +191,7 @@ function DashboardTab({ stats, loading, error }: {
         </div>
       </div>
 
-      {/* System status header */}
+      {/* 系统状态头部 */}
       <div className="flex items-center gap-2">
         <span className={`w-2.5 h-2.5 rounded-full ${stats.status === 'ok' ? 'bg-green-500' : 'bg-yellow-500'}`} />
         <span className="text-sm text-gray-600 dark:text-gray-400">
@@ -202,7 +202,7 @@ function DashboardTab({ stats, loading, error }: {
   );
 }
 
-// ---- Users Tab ----
+// ---- 用户标签页 ----
 
 function UsersTab({ users, total, loading, error, onDelete, uid, token }: {
   users: AdminUser[];
@@ -295,9 +295,9 @@ function UsersTab({ users, total, loading, error, onDelete, uid, token }: {
   );
 }
 
-// ---- Messages Tab ----
+// ---- 消息标签页 ----
 
-/** Extract human-readable text from message content (may be JSON) */
+/** 从消息内容中提取人类可读文本(可能是 JSON) */
 function extractMessageText(content: string): string {
   const parsed = tryParseJSON<{ text?: string; type?: string; name?: string; username?: string; uid?: string; from_uid?: string }>(content);
   if (!parsed) return content;

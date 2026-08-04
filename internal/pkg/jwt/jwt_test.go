@@ -34,7 +34,7 @@ func TestSignAndValidate(t *testing.T) {
 }
 
 func TestExpiredToken(t *testing.T) {
-	// Use a negative expiration so the token is already expired
+	// 使用负的过期时间，使令牌立即过期
 	m := New("test-secret", -1*time.Second)
 
 	token, err := m.Generate("user-1", "Alice", "user")
@@ -59,7 +59,7 @@ func TestTamperedToken(t *testing.T) {
 		t.Fatalf("Generate: %v", err)
 	}
 
-	// Tamper with the payload by appending garbage
+	// 通过追加垃圾数据来篡改载荷
 	tampered := token + "extra-garbage"
 
 	_, err = m.Validate(tampered)
@@ -143,7 +143,7 @@ func TestMultipleUsers(t *testing.T) {
 }
 
 func TestClaimsExpiryWindow(t *testing.T) {
-	// JWT timestamps have second precision, so use whole seconds.
+	// JWT 时间戳精度为秒，因此使用整秒。
 	m := New("test-secret", 2*time.Second)
 
 	token, err := m.Generate("user-1", "Alice", "user")
@@ -151,7 +151,7 @@ func TestClaimsExpiryWindow(t *testing.T) {
 		t.Fatalf("Generate: %v", err)
 	}
 
-	// Immediately validate should work
+	// 立即校验应当成功
 	claims, err := m.Validate(token)
 	if err != nil {
 		t.Fatalf("Validate before expiry: %v", err)
@@ -160,7 +160,7 @@ func TestClaimsExpiryWindow(t *testing.T) {
 		t.Errorf("expected UID 'user-1', got '%s'", claims.UID)
 	}
 
-	// Wait for expiry
+	// 等待过期
 	time.Sleep(3 * time.Second)
 
 	_, err = m.Validate(token)

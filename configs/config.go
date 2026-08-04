@@ -1,4 +1,4 @@
-// Package configs defines the server configuration.
+// Package configs 定义服务器配置。
 package configs
 
 import (
@@ -8,15 +8,15 @@ import (
 	"time"
 )
 
-// Duration is a time.Duration that marshals as a human-readable string (e.g. "30s").
+// Duration 是一个 time.Duration 类型，可序列化为人类可读的字符串（例如 "30s"）。
 type Duration time.Duration
 
-// MarshalJSON implements json.Marshaler.
+// MarshalJSON 实现 json.Marshaler。
 func (d Duration) MarshalJSON() ([]byte, error) {
 	return json.Marshal(time.Duration(d).String())
 }
 
-// UnmarshalJSON implements json.Unmarshaler.
+// UnmarshalJSON 实现 json.Unmarshaler。
 func (d *Duration) UnmarshalJSON(b []byte) error {
 	var s string
 	if err := json.Unmarshal(b, &s); err != nil {
@@ -30,174 +30,174 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// StabilityConfig holds operational stability settings.
+// StabilityConfig 保存运行稳定性相关设置。
 type StabilityConfig struct {
-	MaxConnections   int      `json:"max_connections"`   // 0 = unlimited
-	HTTPReadTimeout  Duration `json:"http_read_timeout"`  // e.g. "10s"
-	HTTPWriteTimeout Duration `json:"http_write_timeout"` // e.g. "10s"
-	HTTPIdleTimeout  Duration `json:"http_idle_timeout"`  // e.g. "120s"
-	ShutdownTimeout  Duration `json:"shutdown_timeout"`   // e.g. "30s"
-	PprofEnabled     bool     `json:"pprof_enabled"`      // false = no debug endpoints
-	PprofAddr        string   `json:"pprof_addr"`         // e.g. "localhost:6060"
+	MaxConnections   int      `json:"max_connections"`   // 0 = 无限制
+	HTTPReadTimeout  Duration `json:"http_read_timeout"`  // 例如 "10s"
+	HTTPWriteTimeout Duration `json:"http_write_timeout"` // 例如 "10s"
+	HTTPIdleTimeout  Duration `json:"http_idle_timeout"`  // 例如 "120s"
+	ShutdownTimeout  Duration `json:"shutdown_timeout"`   // 例如 "30s"
+	PprofEnabled     bool     `json:"pprof_enabled"`      // false = 不启用调试端点
+	PprofAddr        string   `json:"pprof_addr"`         // 例如 "localhost:6060"
 }
 
-// Config aggregates all configuration values.
+// Config 汇总所有配置值。
 type Config struct {
 	Gateway   GatewayConfig   `json:"gateway"`
 	Logic     LogicConfig     `json:"logic"`
 	JWT       JWTConfig       `json:"jwt"`
 	Snow      SnowConfig      `json:"snowflake"`
 	Stability StabilityConfig `json:"stability"`
-	AdminUIDs []string        `json:"admin_uids"` // bootstrap admin user IDs
+	AdminUIDs []string        `json:"admin_uids"` // 初始管理员用户 ID
 }
 
-// GatewayConfig holds the gateway server settings.
+// GatewayConfig 保存网关服务器设置。
 type GatewayConfig struct {
-	HTTPAddr      string            `json:"http_addr"`       // e.g. ":8080"
-	TCPAddr       string            `json:"tcp_addr"`        // e.g. ":8081" — gnet TCP listen address
-	Transport     string            `json:"transport"`       // "websocket", "gnet", or "both"
-	Heartbeat     Duration          `json:"heartbeat"`       // heartbeat interval
-	HeartbeatFail int               `json:"heartbeat_fail"`  // max consecutive heartbeat failures
-	CheckOrigin   []string          `json:"check_origin"`    // allowed WebSocket origins (empty = allow all)
-	Conn          GatewayConnConfig `json:"conn"`            // per-connection parameters
-	RateLimit     RateLimitConfig   `json:"rate_limit"`      // rate limiting
-	Redis         RedisConfig       `json:"redis"`           // Redis (empty Addr = disabled)
-	GNet          GNetConfig        `json:"gnet"`            // gnet TCP settings
-	MySQL         MySQLConfig       `json:"mysql"`           // MySQL (Enabled=false = in-memory)
-	Auth          AuthConfig        `json:"auth"`            // authentication settings
-	Kafka         KafkaConfig       `json:"kafka"`           // Kafka (Enabled=false = direct MySQL)
-	LogicGateway  LogicConfig       `json:"logic"`           // Gateway→Logic gRPC client (Addr); distinct from top-level Config.Logic
-	Grpc          GrpcConfig           `json:"grpc"`            // Gateway's own gRPC server (for inter-gateway, future)
-	ObjectStorage ObjectStorageConfig  `json:"object_storage"`   // MinIO/S3 for file/image messages
+	HTTPAddr      string            `json:"http_addr"`       // 例如 ":8080"
+	TCPAddr       string            `json:"tcp_addr"`        // 例如 ":8081" —— gnet TCP 监听地址
+	Transport     string            `json:"transport"`       // "websocket"、"gnet" 或 "both"
+	Heartbeat     Duration          `json:"heartbeat"`       // 心跳间隔
+	HeartbeatFail int               `json:"heartbeat_fail"`  // 最大连续心跳失败次数
+	CheckOrigin   []string          `json:"check_origin"`    // 允许的 WebSocket 来源（空 = 允许全部）
+	Conn          GatewayConnConfig `json:"conn"`            // 每连接参数
+	RateLimit     RateLimitConfig   `json:"rate_limit"`      // 限流
+	Redis         RedisConfig       `json:"redis"`           // Redis（Addr 为空 = 禁用）
+	GNet          GNetConfig        `json:"gnet"`            // gnet TCP 设置
+	MySQL         MySQLConfig       `json:"mysql"`           // MySQL（Enabled=false = 内存模式）
+	Auth          AuthConfig        `json:"auth"`            // 认证设置
+	Kafka         KafkaConfig       `json:"kafka"`           // Kafka（Enabled=false = 直接写 MySQL）
+	LogicGateway  LogicConfig       `json:"logic"`           // Gateway→Logic 的 gRPC 客户端（Addr）；与顶层 Config.Logic 不同
+	Grpc          GrpcConfig           `json:"grpc"`            // 网关自身的 gRPC 服务器（用于跨网关，未来扩展）
+	ObjectStorage ObjectStorageConfig  `json:"object_storage"`   // 用于文件/图片消息的 MinIO/S3
 
-	// Operational tunables (previously hardcoded constants).
-	RecallWindowMs     int64    `json:"recall_window_ms"`      // message recall window in milliseconds, default 120000
-	HistoryDefaultLimit int     `json:"history_default_limit"` // default history page size, default 30
-	SearchDefaultLimit  int     `json:"search_default_limit"`  // default search result limit, default 20
-	DedupTTL            Duration `json:"dedup_ttl"`            // dedup cache entry TTL, default "5m"
-	PersistConcurrency  int      `json:"persist_concurrency"`  // max concurrent async persist goroutines, default 64
+	// 运行参数（之前为硬编码常量）。
+	RecallWindowMs     int64    `json:"recall_window_ms"`      // 消息撤回时间窗口（毫秒），默认 120000
+	HistoryDefaultLimit int     `json:"history_default_limit"` // 默认历史记录每页条数，默认 30
+	SearchDefaultLimit  int     `json:"search_default_limit"`  // 默认搜索结果条数，默认 20
+	DedupTTL            Duration `json:"dedup_ttl"`            // 去重缓存条目 TTL，默认 "5m"
+	PersistConcurrency  int      `json:"persist_concurrency"`  // 最大并发异步持久化 goroutine 数，默认 64
 }
 
-// GNetConfig holds gnet TCP server settings.
+// GNetConfig 保存 gnet TCP 服务器设置。
 type GNetConfig struct {
-	NumEventLoops  int `json:"num_event_loops"`  // 0 = auto (runtime.NumCPU())
-	WorkerPoolSize int `json:"worker_pool_size"` // 0 = auto (runtime.NumCPU() * 2)
+	NumEventLoops  int `json:"num_event_loops"`  // 0 = 自动（runtime.NumCPU()）
+	WorkerPoolSize int `json:"worker_pool_size"` // 0 = 自动（runtime.NumCPU() * 2）
 }
 
-// MySQLConfig holds MySQL connection settings.
-// Enabled=false means MySQL is disabled (in-memory fallback).
+// MySQLConfig 保存 MySQL 连接设置。
+// Enabled=false 表示 MySQL 被禁用（回退到内存模式）。
 type MySQLConfig struct {
-	Enabled bool   `json:"enabled"` // false = in-memory mode
-	DSN     string `json:"dsn"`     // e.g. "im:im-dev@tcp(127.0.0.1:3306)/im?parseTime=true"
+	Enabled bool   `json:"enabled"` // false = 内存模式
+	DSN     string `json:"dsn"`     // 例如 "im:im-dev@tcp(127.0.0.1:3306)/im?parseTime=true"
 }
 
-// AuthConfig holds authentication settings.
+// AuthConfig 保存认证设置。
 type AuthConfig struct {
-	DevMode bool `json:"dev_mode"` // true = skip password verification (development)
+	DevMode bool `json:"dev_mode"` // true = 跳过密码校验（开发环境）
 }
 
-// KafkaConfig holds Kafka producer settings.
-// Enabled=false means Kafka is disabled (direct MySQL write).
+// KafkaConfig 保存 Kafka 生产者设置。
+// Enabled=false 表示 Kafka 被禁用（直接写 MySQL）。
 type KafkaConfig struct {
-	Enabled bool     `json:"enabled"` // false = direct MySQL or synchronous
-	Brokers []string `json:"brokers"` // e.g. ["localhost:9092"]
-	Topic   string   `json:"topic"`   // e.g. "im.message.persist"
+	Enabled bool     `json:"enabled"` // false = 直接写 MySQL 或同步写入
+	Brokers []string `json:"brokers"` // 例如 ["localhost:9092"]
+	Topic   string   `json:"topic"`   // 例如 "im.message.persist"
 }
 
-// LogicConfig holds Logic service connection and server settings.
-// When MySQL/Kafka fields are empty, the Logic service falls back to
-// gateway.mysql and gateway.kafka for backward compatibility.
+// LogicConfig 保存 Logic 服务的连接与服务器设置。
+// 当 MySQL/Kafka 字段为空时，Logic 服务会回退到
+// gateway.mysql 和 gateway.kafka 以保持向后兼容。
 type LogicConfig struct {
-	Addr       string      `json:"addr"`        // Gateway→Logic gRPC address; empty = use local MessageStore
-	ListenAddr string      `json:"listen_addr"` // Logic service's own gRPC bind address; empty = ":50051"
-	MySQL      MySQLConfig `json:"mysql"`       // Logic's own MySQL config (falls back to gateway.mysql)
-	Kafka      KafkaConfig `json:"kafka"`       // Logic's own Kafka config (falls back to gateway.kafka)
-	WorkerID   int64       `json:"worker_id"`   // Snowflake worker ID for group IDs; default 2 (gateway uses 1)
+	Addr       string      `json:"addr"`        // Gateway→Logic 的 gRPC 地址；空 = 使用本地 MessageStore
+	ListenAddr string      `json:"listen_addr"` // Logic 服务自身的 gRPC 绑定地址；空 = ":50051"
+	MySQL      MySQLConfig `json:"mysql"`       // Logic 自身的 MySQL 配置（回退到 gateway.mysql）
+	Kafka      KafkaConfig `json:"kafka"`       // Logic 自身的 Kafka 配置（回退到 gateway.kafka）
+	WorkerID   int64       `json:"worker_id"`   // 用于群组 ID 的 Snowflake worker ID；默认 2（网关使用 1）
 }
 
-// ObjectStorageConfig holds object storage (MinIO/S3) settings for file/image messages.
-// Enabled=false means in-memory fallback (no persistence).
+// ObjectStorageConfig 保存文件/图片消息的对象存储（MinIO/S3）设置。
+// Enabled=false 表示回退到内存模式（不持久化）。
 type ObjectStorageConfig struct {
-	Enabled   bool   `json:"enabled"`    // false = in-memory fallback
-	Endpoint  string `json:"endpoint"`   // e.g. "localhost:9000"
-	AccessKey string `json:"access_key"` // MinIO access key
-	SecretKey string `json:"secret_key"` // MinIO secret key
-	Bucket    string `json:"bucket"`     // default "im-files"
-	UseSSL    bool   `json:"use_ssl"`    // default false (dev)
-	MaxUpload int64  `json:"max_upload"` // max upload size in bytes, default 10 MB
+	Enabled   bool   `json:"enabled"`    // false = 回退到内存模式
+	Endpoint  string `json:"endpoint"`   // 例如 "localhost:9000"
+	AccessKey string `json:"access_key"` // MinIO 访问密钥
+	SecretKey string `json:"secret_key"` // MinIO 密钥
+	Bucket    string `json:"bucket"`     // 默认 "im-files"
+	UseSSL    bool   `json:"use_ssl"`    // 默认 false（开发环境）
+	MaxUpload int64  `json:"max_upload"` // 最大上传大小（字节），默认 10 MB
 }
 
-// GrpcConfig holds the Gateway's own gRPC server settings for inter-gateway forwarding.
-// When Addr is non-empty and NodeID is set, the Gateway starts a gRPC server
-// and participates in the multi-node hash ring for cross-node message delivery.
+// GrpcConfig 保存网关自身的 gRPC 服务器设置，用于跨网关转发。
+// 当 Addr 非空且设置了 NodeID 时，网关会启动 gRPC 服务器
+// 并加入多节点哈希环，实现跨节点消息投递。
 type GrpcConfig struct {
-	Addr               string            `json:"addr"`                 // e.g. ":50050" — empty = disabled
-	NodeID             string            `json:"node_id"`              // unique ID for this Gateway, e.g. "gw-1"
-	PeerAddrs          map[string]string `json:"peer_addrs"`           // peer nodeID → gRPC address, e.g. {"gw-2": "localhost:50051"}
-	ForwardDialTimeout Duration          `json:"forward_dial_timeout"` // gRPC forwarder dial timeout, default "3s"
-	ForwardRPCTimeout  Duration          `json:"forward_rpc_timeout"`  // gRPC forwarder RPC timeout, default "2s"
-	Discovery          DiscoveryConfig   `json:"discovery"`            // service discovery & health checking
+	Addr               string            `json:"addr"`                 // 例如 ":50050" —— 空 = 禁用
+	NodeID             string            `json:"node_id"`              // 该网关的唯一 ID，例如 "gw-1"
+	PeerAddrs          map[string]string `json:"peer_addrs"`           // 对端节点 nodeID → gRPC 地址，例如 {"gw-2": "localhost:50051"}
+	ForwardDialTimeout Duration          `json:"forward_dial_timeout"` // gRPC 转发器拨号超时，默认 "3s"
+	ForwardRPCTimeout  Duration          `json:"forward_rpc_timeout"`  // gRPC 转发器 RPC 超时，默认 "2s"
+	Discovery          DiscoveryConfig   `json:"discovery"`            // 服务发现与健康检查
 }
 
-// DiscoveryConfig holds service discovery and health check settings for multi-gateway clusters.
-// When Mode is "redis", the Gateway uses Redis for peer discovery instead of static peer_addrs.
-// When Mode is empty or "static", peer_addrs is used as-is (static ring).
+// DiscoveryConfig 保存多网关集群的服务发现与健康检查设置。
+// 当 Mode 为 "redis" 时，网关使用 Redis 进行对端发现，而不是静态 peer_addrs。
+// 当 Mode 为空或 "static" 时，直接使用 peer_addrs（静态环）。
 type DiscoveryConfig struct {
-	Mode           string   `json:"mode"`            // "" or "static" = static peer_addrs; "redis" = Redis discovery
-	RedisKey       string   `json:"redis_key"`       // Redis hash key for node registry, default "im:gateway:nodes"
-	TTL            Duration `json:"ttl"`             // heartbeat TTL, default "15s"
-	HealthInterval Duration `json:"health_interval"` // health check interval, default "5s"
+	Mode           string   `json:"mode"`            // "" 或 "static" = 静态 peer_addrs；"redis" = Redis 发现
+	RedisKey       string   `json:"redis_key"`       // 节点注册表的 Redis 哈希键，默认 "im:gateway:nodes"
+	TTL            Duration `json:"ttl"`             // 心跳 TTL，默认 "15s"
+	HealthInterval Duration `json:"health_interval"` // 健康检查间隔，默认 "5s"
 }
 
-// GatewayConnConfig holds per-connection WebSocket parameters.
+// GatewayConnConfig 保存每连接 WebSocket 参数。
 type GatewayConnConfig struct {
-	PongWait       Duration `json:"pong_wait"`        // pong timeout
-	PingPeriod     Duration `json:"ping_period"`      // ping interval
-	MaxMsgSize     int64    `json:"max_msg_size"`     // max incoming message size
-	SendBufSize    int      `json:"send_buf_size"`    // outbound channel capacity
-	OfflineMaxSize int      `json:"offline_max_size"` // max offline messages per user
+	PongWait       Duration `json:"pong_wait"`        // pong 超时
+	PingPeriod     Duration `json:"ping_period"`      // ping 间隔
+	MaxMsgSize     int64    `json:"max_msg_size"`     // 最大入站消息大小
+	SendBufSize    int      `json:"send_buf_size"`    // 出站通道容量
+	OfflineMaxSize int      `json:"offline_max_size"` // 每个用户的最大离线消息数
 }
 
-// RateLimitConfig holds per-user rate limiting settings.
+// RateLimitConfig 保存每用户限流设置。
 type RateLimitConfig struct {
-	Enabled        bool     `json:"enabled"`         // false to disable rate limiting
-	Rate           int      `json:"rate"`            // messages per second (token refill rate)
-	Burst          int      `json:"burst"`           // max burst size (bucket capacity)
-	CleanupInterval Duration `json:"cleanup_interval"` // stale bucket cleanup interval, default "5m"
+	Enabled        bool     `json:"enabled"`         // false = 禁用限流
+	Rate           int      `json:"rate"`            // 每秒消息数（令牌补充速率）
+	Burst          int      `json:"burst"`           // 最大突发量（桶容量）
+	CleanupInterval Duration `json:"cleanup_interval"` // 过期桶清理间隔，默认 "5m"
 }
 
-// JWTConfig holds JWT settings.
+// JWTConfig 保存 JWT 设置。
 type JWTConfig struct {
 	Secret     string   `json:"secret"`
 	Expiration Duration `json:"expiration"`
 }
 
-// RedisConfig holds Redis connection settings.
-// An empty Addr means Redis is disabled (in-memory fallback).
+// RedisConfig 保存 Redis 连接设置。
+// Addr 为空表示 Redis 被禁用（回退到内存模式）。
 type RedisConfig struct {
-	Addr     string `json:"addr"`     // e.g. "localhost:6379" — empty = disabled
-	Password string `json:"password"` // empty if no auth required
-	DB       int    `json:"db"`       // Redis database number, default 0
+	Addr     string `json:"addr"`     // 例如 "localhost:6379" —— 空 = 禁用
+	Password string `json:"password"` // 无需认证时为空
+	DB       int    `json:"db"`       // Redis 数据库编号，默认 0
 }
 
-// SnowConfig holds snowflake ID generator settings.
+// SnowConfig 保存 snowflake ID 生成器设置。
 type SnowConfig struct {
 	WorkerID int64 `json:"worker_id"`
 }
 
-// Default returns a Config with sensible defaults.
+// Default 返回带有合理默认值的 Config。
 func Default() *Config {
 	return &Config{
 		Gateway: GatewayConfig{
 			HTTPAddr:      ":8080",
 			TCPAddr:       ":8081",
-			Transport:     "websocket", // default to websocket for backward compat
+			Transport:     "websocket", // 默认为 websocket 以保持向后兼容
 			Heartbeat:     Duration(30 * time.Second),
 			HeartbeatFail: 3,
 			Conn: GatewayConnConfig{
 				PongWait:       Duration(60 * time.Second),
 				PingPeriod:     Duration(54 * time.Second),
-				MaxMsgSize:     65536, // protobuf binary messages need more headroom
+				MaxMsgSize:     65536, // protobuf 二进制消息需要更大余量
 				SendBufSize:    256,
 				OfflineMaxSize: 1000,
 			},
@@ -208,43 +208,43 @@ func Default() *Config {
 				CleanupInterval: Duration(5 * time.Minute),
 			},
 			GNet: GNetConfig{
-				NumEventLoops:  0, // auto (runtime.NumCPU())
-				WorkerPoolSize: 0, // auto (runtime.NumCPU() * 2)
+				NumEventLoops:  0, // 自动（runtime.NumCPU()）
+				WorkerPoolSize: 0, // 自动（runtime.NumCPU() * 2）
 			},
 			MySQL: MySQLConfig{
-				Enabled: false,                                                      // default to in-memory
+				Enabled: false,                                                      // 默认使用内存模式
 				DSN:     "im:im-dev@tcp(127.0.0.1:3307)/im?parseTime=true&charset=utf8mb4",
 			},
 			Auth: AuthConfig{
-				DevMode: true, // skip password in development
+				DevMode: true, // 开发环境跳过密码
 			},
 			Kafka: KafkaConfig{
-				Enabled: false,                // default to direct MySQL / synchronous
+				Enabled: false,                // 默认直接写 MySQL / 同步写入
 				Brokers: []string{"localhost:9092"},
 				Topic:   "im.message.persist",
 			},
 			LogicGateway: LogicConfig{
-				Addr:       "",            // empty = use local MessageStore
-				ListenAddr: "",            // empty = ":50051"
-				MySQL:      MySQLConfig{}, // empty → fall back to gateway.mysql
-				Kafka:      KafkaConfig{}, // empty → fall back to gateway.kafka
-				WorkerID:   2,             // snowflake worker for group IDs (gateway uses 1)
+				Addr:       "",            // 空 = 使用本地 MessageStore
+				ListenAddr: "",            // 空 = ":50051"
+				MySQL:      MySQLConfig{}, // 空 → 回退到 gateway.mysql
+				Kafka:      KafkaConfig{}, // 空 → 回退到 gateway.kafka
+				WorkerID:   2,             // 群组 ID 的 snowflake worker（网关使用 1）
 			},
 			Grpc: GrpcConfig{
-				Addr:               "",   // empty = disabled (single-node mode)
+				Addr:               "",   // 空 = 禁用（单节点模式）
 				NodeID:             "",
 				PeerAddrs:          nil,
 				ForwardDialTimeout: Duration(3 * time.Second),
 				ForwardRPCTimeout:  Duration(2 * time.Second),
 				Discovery: DiscoveryConfig{
-					Mode:           "", // "static" — use peer_addrs
+					Mode:           "", // "static" —— 使用 peer_addrs
 					RedisKey:       "im:gateway:node:",
 					TTL:            Duration(15 * time.Second),
 					HealthInterval: Duration(5 * time.Second),
 				},
 			},
 			ObjectStorage: ObjectStorageConfig{
-				Enabled:   false,      // default to in-memory (no Docker needed)
+				Enabled:   false,      // 默认使用内存模式（无需 Docker）
 				Endpoint:  "localhost:9000",
 				AccessKey: "minioadmin",
 				SecretKey: "minioadmin",
@@ -253,7 +253,7 @@ func Default() *Config {
 				MaxUpload: 10 * 1024 * 1024, // 10 MB
 			},
 
-			// Operational tunables.
+			// 运行参数。
 			RecallWindowMs:      120_000,
 			HistoryDefaultLimit: 30,
 			SearchDefaultLimit:  20,
@@ -268,7 +268,7 @@ func Default() *Config {
 			WorkerID: 1,
 		},
 		Stability: StabilityConfig{
-			MaxConnections:   0, // unlimited
+			MaxConnections:   0, // 无限制
 			HTTPReadTimeout:  Duration(10 * time.Second),
 			HTTPWriteTimeout: Duration(10 * time.Second),
 			HTTPIdleTimeout:  Duration(120 * time.Second),
@@ -280,7 +280,7 @@ func Default() *Config {
 	}
 }
 
-// Load reads a JSON config file, falling back to defaults if the file is absent.
+// Load 读取 JSON 配置文件，文件不存在时回退到默认值。
 func Load(path string) (*Config, error) {
 	cfg := Default()
 	data, err := os.ReadFile(path)

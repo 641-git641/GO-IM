@@ -1,10 +1,10 @@
 import { create } from 'zustand';
 import { saveAuth, clearAuth, getStoredUid, getStoredUsername, getToken, isTokenExpired } from '@/lib/auth';
 
-/** Decode the role field from a JWT payload. */
+/** 从 JWT 载荷中解码角色字段。 */
 function getRoleFromToken(token: string): boolean {
   try {
-    // JWT uses base64url (not standard base64): replace - → +, _ → /
+    // JWT 使用 base64url(非标准 base64):将 - → +、_ → /
     const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
     const payload = JSON.parse(atob(base64));
     return payload.role === 'admin';

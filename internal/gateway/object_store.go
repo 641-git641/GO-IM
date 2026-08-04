@@ -13,45 +13,45 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
-// ObjectStore is the interface for file/blob storage (MinIO/S3 or in-memory).
+// ObjectStore 是文件/对象存储的接口(MinIO/S3 或内存)。
 type ObjectStore interface {
-	// Put stores data at key with the given content type.
+	// Put 以给定内容类型将数据存储到 key 下。
 	Put(ctx context.Context, key string, data []byte, contentType string) error
 
-	// Get retrieves data and content type for a key.
-	// Returns an error if the key does not exist.
+	// Get 检索 key 对应的数据及内容类型。
+	// 如果 key 不存在则返回错误。
 	Get(ctx context.Context, key string) (data []byte, contentType string, err error)
 
-	// Delete removes a key from the store.
+	// Delete 从存储中移除一个 key。
 	Delete(ctx context.Context, key string) error
 }
 
-// storedObject holds file data in memory.
+// storedObject 在内存中保存文件数据。
 type storedObject struct {
 	data        []byte
 	contentType string
 }
 
-// InMemoryObjectStore is an in-memory ObjectStore for testing and development.
-// Data is lost on restart.
+// InMemoryObjectStore 是用于测试和开发的内存版 ObjectStore。
+// 重启后数据丢失。
 type InMemoryObjectStore struct {
 	mu    sync.RWMutex
 	items map[string]*storedObject
 }
 
-// NewInMemoryObjectStore creates an empty InMemoryObjectStore.
+// NewInMemoryObjectStore 创建一个空的 InMemoryObjectStore。
 func NewInMemoryObjectStore() *InMemoryObjectStore {
 	return &InMemoryObjectStore{
 		items: make(map[string]*storedObject),
 	}
 }
 
-// Put stores data in memory.
+// Put 将数据存入内存。
 func (s *InMemoryObjectStore) Put(_ context.Context, key string, data []byte, contentType string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Copy data so caller can reuse the slice.
+	// 复制数据,使调用方可以复用该切片。
 	cp := make([]byte, len(data))
 	copy(cp, data)
 
@@ -62,7 +62,7 @@ func (s *InMemoryObjectStore) Put(_ context.Context, key string, data []byte, co
 	return nil
 }
 
-// Get retrieves data from memory.
+// Get 从内存中检索数据。
 func (s *InMemoryObjectStore) Get(_ context.Context, key string) ([]byte, string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -72,13 +72,13 @@ func (s *InMemoryObjectStore) Get(_ context.Context, key string) ([]byte, string
 		return nil, "", fmt.Errorf("key %q not found", key)
 	}
 
-	// Return a copy so caller can't mutate internal state.
+	// 返回副本,防止调用方修改内部状态。
 	cp := make([]byte, len(obj.data))
 	copy(cp, obj.data)
 	return cp, obj.contentType, nil
 }
 
-// Delete removes a key from memory.
+// Delete 从内存中移除一个 key。
 func (s *InMemoryObjectStore) Delete(_ context.Context, key string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -86,13 +86,13 @@ func (s *InMemoryObjectStore) Delete(_ context.Context, key string) error {
 	return nil
 }
 
-// MinioStore is a MinIO/S3-backed ObjectStore.
+// MinioStore 是基于 MinIO/S3 的 ObjectStore。
 type MinioStore struct {
 	client *minio.Client
 	bucket string
 }
 
-// NewMinioStore creates a MinioStore and ensures the bucket exists.
+// NewMinioStore 创建一个 MinioStore 并确保桶存在。
 func NewMinioStore(ctx context.Context, cfg configs.ObjectStorageConfig) (*MinioStore, error) {
 	client, err := minio.New(cfg.Endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
@@ -107,7 +107,7 @@ func NewMinioStore(ctx context.Context, cfg configs.ObjectStorageConfig) (*Minio
 		bucket = "im-files"
 	}
 
-	// Ensure bucket exists.
+	// 确保桶存在。
 	exists, err := client.BucketExists(ctx, bucket)
 	if err != nil {
 		return nil, fmt.Errorf("minio bucket check: %w", err)
@@ -123,7 +123,7 @@ func NewMinioStore(ctx context.Context, cfg configs.ObjectStorageConfig) (*Minio
 	return &MinioStore{client: client, bucket: bucket}, nil
 }
 
-// Put uploads data to MinIO.
+// Put 将数据上传到 MinIO。
 func (s *MinioStore) Put(ctx context.Context, key string, data []byte, contentType string) error {
 	reader := bytes.NewReader(data)
 	_, err := s.client.PutObject(ctx, s.bucket, key, reader, int64(len(data)), minio.PutObjectOptions{
@@ -135,7 +135,7 @@ func (s *MinioStore) Put(ctx context.Context, key string, data []byte, contentTy
 	return nil
 }
 
-// Get downloads data from MinIO.
+// Get 从 MinIO 下载数据。
 func (s *MinioStore) Get(ctx context.Context, key string) ([]byte, string, error) {
 	obj, err := s.client.GetObject(ctx, s.bucket, key, minio.GetObjectOptions{})
 	if err != nil {
@@ -156,13 +156,13 @@ func (s *MinioStore) Get(ctx context.Context, key string) ([]byte, string, error
 	return data, stat.ContentType, nil
 }
 
-// Ping checks MinIO connectivity by verifying the bucket exists.
+// Ping 通过验证桶是否存在来检查 MinIO 连通性。
 func (s *MinioStore) Ping(ctx context.Context) error {
 	_, err := s.client.BucketExists(ctx, s.bucket)
 	return err
 }
 
-// Delete removes an object from MinIO.
+// Delete 从 MinIO 中移除一个对象。
 func (s *MinioStore) Delete(ctx context.Context, key string) error {
 	err := s.client.RemoveObject(ctx, s.bucket, key, minio.RemoveObjectOptions{})
 	if err != nil {

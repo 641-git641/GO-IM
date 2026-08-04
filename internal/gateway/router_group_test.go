@@ -9,7 +9,7 @@ import (
 	"github.com/im/internal/pkg/snowflake"
 )
 
-// ---------- Group Management Protocol Handlers ----------
+// ---------- 群组管理协议处理器 ----------
 
 func TestHandleGroupCreate(t *testing.T) {
 	h := NewHub(100)
@@ -26,13 +26,13 @@ func TestHandleGroupCreate(t *testing.T) {
 		Content: `{"name":"My Group"}`,
 	})
 
-	// Should receive a response with group details.
+	// 应收到包含群组详情的响应。
 	resp := readMessageFromChan(t, sender.send)
 	if resp.Cmd != proto.CmdGroupCreate {
 		t.Fatalf("expected CmdGroupCreate response, got cmd=%d", resp.Cmd)
 	}
 
-	// Parse the response content.
+	// 解析响应内容。
 	var result map[string]interface{}
 	if err := json.Unmarshal([]byte(resp.Content), &result); err != nil {
 		t.Fatalf("unmarshal response: %v", err)
@@ -51,7 +51,7 @@ func TestHandleGroupCreate(t *testing.T) {
 		t.Errorf("expected members=[alice], got %v", members)
 	}
 
-	// Verify the group exists in the store.
+	// 验证群组存在于存储中。
 	g, err := gs.Get(context.Background(), result["id"].(string))
 	if err != nil {
 		t.Fatalf("group not found in store: %v", err)
@@ -93,7 +93,7 @@ func TestHandleGroupCreateNoGroupStore(t *testing.T) {
 	h := NewHub(100)
 	sg, _ := snowflake.New(1)
 
-	// Router WITHOUT GroupStore set.
+	// 未设置 GroupStore 的 Router。
 	r := NewRouter(h, h, sg, nil, DefaultRouterConfig())
 
 	sender := newTestClient(t, "alice", "Alice")
@@ -124,11 +124,11 @@ func TestHandleGroupJoin(t *testing.T) {
 	ctx := context.Background()
 	g, _ := gs.Create(ctx, "Dev Team", "alice", nil)
 
-	// Register alice as online so she receives the notification.
+	// 将 alice 注册为在线，以便她收到通知。
 	alice := newTestClient(t, "alice", "Alice")
 	h.Register(ctx, alice)
 
-	// Bob joins the group.
+	// Bob 加入群组。
 	bob := newTestClient(t, "bob", "Bob")
 	r.Route(ctx, bob, &proto.Message{
 		Cmd:  proto.CmdGroupJoin,
@@ -136,7 +136,7 @@ func TestHandleGroupJoin(t *testing.T) {
 		To:   g.ID,
 	})
 
-	// Bob should receive a response.
+	// Bob 应收到响应。
 	resp := readMessageFromChan(t, bob.send)
 	if resp.Cmd != proto.CmdGroupJoin {
 		t.Fatalf("expected CmdGroupJoin response, got cmd=%d", resp.Cmd)
@@ -153,12 +153,12 @@ func TestHandleGroupJoin(t *testing.T) {
 		t.Errorf("expected 2 members, got %d", len(members))
 	}
 
-	// Verify bob is now a member.
+	// 验证 bob 现在已是成员。
 	if !gs.IsMember(ctx, g.ID, "bob") {
 		t.Error("bob should be a member")
 	}
 
-	// Alice (existing member) should receive a notification.
+	// Alice（现有成员）应收到通知。
 	notif := readMessageFromChan(t, alice.send)
 	if notif.ChatType != proto.ChatTypeGroup {
 		t.Errorf("expected group chat notification, got chat_type=%d", notif.ChatType)
@@ -177,7 +177,7 @@ func TestHandleGroupJoinNoGroupID(t *testing.T) {
 	r.Route(context.Background(), sender, &proto.Message{
 		Cmd:  proto.CmdGroupJoin,
 		From: "bob",
-		To:   "", // empty group_id
+		To:   "", // 空的 group_id
 	})
 
 	resp := readMessageFromChan(t, sender.send)
@@ -255,11 +255,11 @@ func TestHandleGroupLeave(t *testing.T) {
 	g, _ := gs.Create(ctx, "Dev Team", "alice", nil)
 	gs.AddMember(ctx, g.ID, "bob")
 
-	// Register alice so she receives notification when bob leaves.
+	// 注册 alice，以便她在 bob 退出时收到通知。
 	alice := newTestClient(t, "alice", "Alice")
 	h.Register(ctx, alice)
 
-	// Bob leaves the group.
+	// Bob 退出群组。
 	bob := newTestClient(t, "bob", "Bob")
 	r.Route(ctx, bob, &proto.Message{
 		Cmd:  proto.CmdGroupLeave,
@@ -267,7 +267,7 @@ func TestHandleGroupLeave(t *testing.T) {
 		To:   g.ID,
 	})
 
-	// Bob should receive a response.
+	// Bob 应收到响应。
 	resp := readMessageFromChan(t, bob.send)
 	if resp.Cmd != proto.CmdGroupLeave {
 		t.Fatalf("expected CmdGroupLeave response, got cmd=%d", resp.Cmd)
@@ -280,12 +280,12 @@ func TestHandleGroupLeave(t *testing.T) {
 		t.Errorf("expected group_id=%s, got %v", g.ID, result["group_id"])
 	}
 
-	// Bob should no longer be a member.
+	// Bob 不应再是成员。
 	if gs.IsMember(ctx, g.ID, "bob") {
 		t.Error("bob should have been removed from group")
 	}
 
-	// Alice (remaining member) should receive a notification.
+	// Alice（剩余成员）应收到通知。
 	notif := readMessageFromChan(t, alice.send)
 	if notif.ChatType != proto.ChatTypeGroup {
 		t.Errorf("expected group notification, got chat_type=%d", notif.ChatType)
@@ -303,7 +303,7 @@ func TestHandleGroupLeaveLastMemberDeletes(t *testing.T) {
 	ctx := context.Background()
 	g, _ := gs.Create(ctx, "Solo Group", "alice", nil)
 
-	// Alice (the only member) leaves.
+	// Alice（唯一成员）退出。
 	alice := newTestClient(t, "alice", "Alice")
 	r.Route(ctx, alice, &proto.Message{
 		Cmd:  proto.CmdGroupLeave,
@@ -319,12 +319,12 @@ func TestHandleGroupLeaveLastMemberDeletes(t *testing.T) {
 	if err := json.Unmarshal([]byte(resp.Content), &result); err != nil {
 		t.Fatalf("unmarshal response: %v", err)
 	}
-	// Group should be deleted.
+	// 群组应被删除。
 	if result["deleted"] != true {
 		t.Errorf("expected deleted=true for last member leave, got %v", result["deleted"])
 	}
 
-	// Verify group no longer exists.
+	// 验证群组不再存在。
 	_, err := gs.Get(ctx, g.ID)
 	if err == nil {
 		t.Error("group should have been deleted")
@@ -367,7 +367,7 @@ func TestHandleGroupLeaveNotMember(t *testing.T) {
 	ctx := context.Background()
 	g, _ := gs.Create(ctx, "Dev Team", "alice", nil)
 
-	// Bob tries to leave a group he's not in.
+	// Bob 试图退出一个他不在的群组。
 	bob := newTestClient(t, "bob", "Bob")
 	r.Route(ctx, bob, &proto.Message{
 		Cmd:  proto.CmdGroupLeave,
@@ -488,7 +488,7 @@ func TestHandleGroupList(t *testing.T) {
 	ctx := context.Background()
 	g1, _ := gs.Create(ctx, "Group A", "alice", nil)
 	g2, _ := gs.Create(ctx, "Group B", "bob", nil)
-	gs.AddMember(ctx, g2.ID, "alice") // alice is in both groups
+	gs.AddMember(ctx, g2.ID, "alice") // alice 在两个群组中
 
 	sender := newTestClient(t, "alice", "Alice")
 	r.Route(ctx, sender, &proto.Message{
@@ -513,7 +513,7 @@ func TestHandleGroupList(t *testing.T) {
 		t.Fatalf("expected 2 groups, got %d", len(groups))
 	}
 
-	// Check both groups are present.
+	// 检查两个群组都存在。
 	ids := make(map[string]bool)
 	for _, gr := range groups {
 		gm := gr.(map[string]interface{})
@@ -553,7 +553,7 @@ func TestHandleGroupListNoGroupStore(t *testing.T) {
 	h := NewHub(100)
 	sg, _ := snowflake.New(1)
 
-	// Router WITHOUT GroupStore set.
+	// 未设置 GroupStore 的 Router。
 	r := NewRouter(h, h, sg, nil, DefaultRouterConfig())
 
 	sender := newTestClient(t, "alice", "Alice")
@@ -584,14 +584,14 @@ func TestSendGroupNotification(t *testing.T) {
 	g, _ := gs.Create(ctx, "Dev Team", "alice", nil)
 	gs.AddMember(ctx, g.ID, "bob")
 
-	// Register bob as online.
+	// 将 bob 注册为在线。
 	bob := newTestClient(t, "bob", "Bob")
 	h.Register(ctx, bob)
 
-	// Send notification via sendGroupNotification (testing member_joined type).
+	// 通过 sendGroupNotification 发送通知（测试 member_joined 类型）。
 	r.sendGroupNotification(ctx, "carol", g.ID, "member_joined")
 
-	// Bob should receive the notification.
+	// Bob 应收到通知。
 	notif := readMessageFromChan(t, bob.send)
 	if notif.Cmd != proto.CmdChat {
 		t.Errorf("expected CmdChat for notification, got cmd=%d", notif.Cmd)
@@ -617,7 +617,7 @@ func TestSendGroupNotification(t *testing.T) {
 		t.Errorf("expected uid='carol', got %q", notifContent["uid"])
 	}
 
-	// alice (sender) is not online — notification for her is stored offline.
+	// alice（发送者）不在线 —— 给她的通知会存储在离线队列中。
 	offlineMsgs := h.DrainOffline(ctx, "alice")
 	if len(offlineMsgs) != 1 {
 		t.Errorf("expected 1 offline notification for alice, got %d", len(offlineMsgs))
@@ -636,14 +636,14 @@ func TestSendGroupNotificationMemberLeft(t *testing.T) {
 	g, _ := gs.Create(ctx, "Dev Team", "alice", nil)
 	gs.AddMember(ctx, g.ID, "bob")
 
-	// Register alice as online.
+	// 将 alice 注册为在线。
 	alice := newTestClient(t, "alice", "Alice")
 	h.Register(ctx, alice)
 
-	// Send member_left notification.
+	// 发送 member_left 通知。
 	r.sendGroupNotification(ctx, "bob", g.ID, "member_left")
 
-	// Alice (online) should receive the notification.
+	// Alice（在线）应收到通知。
 	notif := readMessageFromChan(t, alice.send)
 
 	var notifContent map[string]string

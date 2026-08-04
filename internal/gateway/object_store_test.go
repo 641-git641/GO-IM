@@ -58,7 +58,7 @@ func TestInMemoryObjectStoreDataIsolation(t *testing.T) {
 	orig := []byte("original")
 	s.Put(ctx, "k", orig, "text/plain")
 
-	// Mutate the original slice — the store should be unaffected.
+	// 修改原始切片 —— 存储不应受影响。
 	orig[0] = 'X'
 
 	data, _, _ := s.Get(ctx, "k")
@@ -66,7 +66,7 @@ func TestInMemoryObjectStoreDataIsolation(t *testing.T) {
 		t.Errorf("expected 'original', got %q — data not isolated from caller mutation", string(data))
 	}
 
-	// Mutate the returned slice — the store should be unaffected.
+	// 修改返回的切片 —— 存储不应受影响。
 	data[0] = 'Y'
 
 	data2, _, _ := s.Get(ctx, "k")

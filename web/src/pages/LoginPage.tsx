@@ -18,7 +18,7 @@ export default function LoginPage() {
   const isLoggedIn = useAuthStore((s) => s.isLoggedIn);
   const navigate = useNavigate();
 
-  // Restore existing session on mount
+  // 挂载时恢复已有会话
   useEffect(() => {
     useAuthStore.getState().restore();
   }, []);
@@ -81,7 +81,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 dark:from-gray-950 to-blue-100 dark:to-gray-900">
       <div className="w-full max-w-md mx-4">
         <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-lg overflow-hidden">
-          {/* Tab toggle */}
+          {/* 标签切换 */}
           <div className="flex border-b border-gray-100 dark:border-gray-800">
             <button
               onClick={() => switchMode('login')}
@@ -106,7 +106,7 @@ export default function LoginPage() {
           </div>
 
           <div className="p-8 space-y-6">
-            {/* Logo */}
+            {/* 标志 */}
             <div className="text-center space-y-2">
               <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary-100">
                 <MessageCircle className="w-8 h-8 text-primary-600" />

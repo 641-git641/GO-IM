@@ -1,4 +1,4 @@
-// Package jwt provides JWT token creation and validation.
+// Package jwt 提供 JWT 令牌的创建与校验。
 package jwt
 
 import (
@@ -9,28 +9,28 @@ import (
 	jwtlib "github.com/golang-jwt/jwt/v5"
 )
 
-// Sentinel errors for token validation.
+// 用于令牌校验的哨兵错误。
 var (
 	ErrTokenExpired   = errors.New("token expired")
 	ErrTokenInvalid   = errors.New("token invalid")
 	ErrTokenSignature = errors.New("token signature mismatch")
 )
 
-// Claims carries the authenticated user's identity.
+// Claims 携带已认证用户的身份信息。
 type Claims struct {
 	UID      string `json:"uid"`
 	Username string `json:"username"`
-	Role     string `json:"role"` // "user" or "admin"
+	Role     string `json:"role"` // "user" 或 "admin"
 	jwtlib.RegisteredClaims
 }
 
-// Manager handles JWT operations.
+// Manager 负责 JWT 操作。
 type Manager struct {
 	secret     []byte
 	expiration time.Duration
 }
 
-// New creates a JWT Manager.
+// New 创建一个 JWT Manager。
 func New(secret string, expiration time.Duration) *Manager {
 	return &Manager{
 		secret:     []byte(secret),
@@ -38,7 +38,7 @@ func New(secret string, expiration time.Duration) *Manager {
 	}
 }
 
-// Generate creates a signed JWT token for a user.
+// Generate 为用户创建带签名的 JWT 令牌。
 func (m *Manager) Generate(uid, username, role string) (string, error) {
 	claims := Claims{
 		UID:      uid,
@@ -54,11 +54,11 @@ func (m *Manager) Generate(uid, username, role string) (string, error) {
 	return token.SignedString(m.secret)
 }
 
-// Validate parses and validates a token string, returning the claims.
-// Returns specific sentinel errors for callers to differentiate:
-//   - ErrTokenExpired when the token has expired
-//   - ErrTokenSignature when the signing method or secret is wrong
-//   - ErrTokenInvalid for all other validation failures
+// Validate 解析并校验令牌字符串，返回其中的声明。
+// 返回特定的哨兵错误，便于调用方区分：
+//   - ErrTokenExpired 当令牌已过期时
+//   - ErrTokenSignature 当签名方法或密钥错误时
+//   - ErrTokenInvalid 其他所有校验失败时
 func (m *Manager) Validate(tokenStr string) (*Claims, error) {
 	token, err := jwtlib.ParseWithClaims(tokenStr, &Claims{},
 		func(t *jwtlib.Token) (interface{}, error) {
@@ -71,7 +71,7 @@ func (m *Manager) Validate(tokenStr string) (*Claims, error) {
 		if errors.Is(err, jwtlib.ErrTokenExpired) {
 			return nil, ErrTokenExpired
 		}
-		// Distinguish signature errors from other failures
+		// 将签名错误与其他失败区分开来
 		if errors.Is(err, jwtlib.ErrSignatureInvalid) {
 			return nil, ErrTokenSignature
 		}

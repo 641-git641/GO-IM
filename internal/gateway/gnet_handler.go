@@ -16,18 +16,18 @@ import (
 	pb "google.golang.org/protobuf/proto"
 )
 
-// frameMaxSize is the maximum protobuf frame payload size.
+// frameMaxSize 是最大 protobuf 帧负载大小。
 const frameHeaderSize = 4
 
-// WorkerPool is a simple goroutine pool for offloading Router.Route calls.
+// WorkerPool 是一个简单的 goroutine 池,用于分担 Router.Route 调用。
 type WorkerPool struct {
 	tasks     chan func()
-	done      chan struct{} // closed by Close()
+	done      chan struct{} // 由 Close() 关闭
 	closeOnce sync.Once
 	closed    atomic.Bool
 }
 
-// NewWorkerPool creates a goroutine pool. If size <= 0, uses a default.
+// NewWorkerPool 创建一个 goroutine 池。如果 size <= 0,使用默认值。
 func NewWorkerPool(size int) *WorkerPool {
 	if size <= 0 {
 		size = 4
@@ -46,7 +46,7 @@ func NewWorkerPool(size int) *WorkerPool {
 	return wp
 }
 
-// Submit enqueues a task. Non-blocking; drops if the queue is full or pool is closed.
+// Submit 将任务入队。非阻塞;队列已满或池已关闭时丢弃。
 func (wp *WorkerPool) Submit(task func()) {
 	if wp.closed.Load() {
 		return
@@ -58,8 +58,8 @@ func (wp *WorkerPool) Submit(task func()) {
 	}
 }
 
-// Close stops the worker pool, draining in-flight tasks before returning.
-// Safe to call multiple times — uses sync.Once.
+// Close 停止工作池,返回前排空正在执行的任务。
+// 可安全地多次调用 —— 内部使用 sync.Once。
 func (wp *WorkerPool) Close() {
 	wp.closeOnce.Do(func() {
 		wp.closed.Store(true)
@@ -68,13 +68,13 @@ func (wp *WorkerPool) Close() {
 	})
 }
 
-// GnetHandler implements gnet.EventHandler for the gnet TCP server.
-// Framing is done manually in OnTraffic via Peek/Discard/Next.
+// GnetHandler 为 gnet TCP 服务器实现 gnet.EventHandler。
+// 帧解析在 OnTraffic 中通过 Peek/Discard/Next 手动完成。
 type GnetHandler struct {
 	gnet.BuiltinEventEngine
 
 	ctx              context.Context
-	cancel           context.CancelFunc // cancels heartbeat checker
+	cancel           context.CancelFunc // 取消心跳检查器
 	router           *Router
 	clients          ClientRegistry
 	jwtMgr           *jwt.Manager
@@ -83,12 +83,12 @@ type GnetHandler struct {
 	heartbeatTimeout time.Duration
 	workerPool       *WorkerPool
 
-	engine    gnet.Engine // set by OnBoot, used for graceful shutdown
+	engine    gnet.Engine // 由 OnBoot 设置,用于优雅关闭
 	engineSet bool
-	connMap   sync.Map    // fd(int) → *Client
+	connMap   sync.Map    // fd(int) → *Client 连接映射
 }
 
-// NewGnetHandler creates a GnetHandler.
+// NewGnetHandler 创建一个 GnetHandler。
 func NewGnetHandler(
 	ctx context.Context,
 	router *Router,
@@ -112,26 +112,26 @@ func NewGnetHandler(
 		workerPool:       NewWorkerPool(workerPoolSize),
 	}
 
-	// Start heartbeat checker with a cancelable context.
+	// 用可取消的 context 启动心跳检查器。
 	h.startHeartbeatChecker(hbCtx, heartbeatTimeout/2)
 
 	return h
 }
 
-// OnOpen is called when a new TCP connection is established.
+// OnOpen 在新 TCP 连接建立时被调用。
 func (h *GnetHandler) OnOpen(c gnet.Conn) ([]byte, gnet.Action) {
-	// Store a pending marker — authentication happens on the first message.
+	// 存储待认证标记 —— 认证在第一条消息时进行。
 	c.SetContext("pending")
 	return nil, gnet.None
 }
 
-// OnClose is called when a connection is closed.
+// OnClose 在连接关闭时被调用。
 func (h *GnetHandler) OnClose(c gnet.Conn, _ error) (action gnet.Action) {
 	ctxVal := c.Context()
 	if ctxVal == nil {
 		return gnet.None
 	}
-	// Only clean up if this connection was authenticated.
+	// 仅当该连接已通过认证时才进行清理。
 	if client, ok := ctxVal.(*Client); ok {
 		h.clients.Unregister(h.ctx, client)
 		client.Close()
@@ -141,14 +141,14 @@ func (h *GnetHandler) OnClose(c gnet.Conn, _ error) (action gnet.Action) {
 	return gnet.None
 }
 
-// OnTraffic is called when data arrives. It implements frame decoding manually
-// because gnet v2 does not have the ICodec interface from v1.
+// OnTraffic 在数据到达时被调用。它手动实现帧解码,
+// 因为 gnet v2 没有 v1 中的 ICodec 接口。
 func (h *GnetHandler) OnTraffic(c gnet.Conn) gnet.Action {
 	for {
-		// Peek at the 4-byte length header.
+		// 查看 4 字节的长度头。
 		header, err := c.Peek(frameHeaderSize)
 		if err == io.ErrShortBuffer {
-			// Not enough data yet — wait for more.
+			// 数据还不够 —— 等待更多数据。
 			return gnet.None
 		}
 		if err != nil {
@@ -162,7 +162,7 @@ func (h *GnetHandler) OnTraffic(c gnet.Conn) gnet.Action {
 		}
 
 		totalLen := frameHeaderSize + int(length)
-		// Peek at the complete frame.
+		// 查看完整帧。
 		if _, err := c.Peek(totalLen); err == io.ErrShortBuffer {
 			return gnet.None
 		}
@@ -170,21 +170,21 @@ func (h *GnetHandler) OnTraffic(c gnet.Conn) gnet.Action {
 			return gnet.Close
 		}
 
-		// Discard the header.
+		// 丢弃头部。
 		c.Discard(frameHeaderSize)
-		// Read the payload.
+		// 读取负载。
 		payload, err := c.Next(int(length))
 		if err != nil {
 			log.Printf("[gnet] read payload error fd=%d: %v", c.Fd(), err)
 			return gnet.Close
 		}
 
-		// Process the frame (must not block the event loop).
+		// 处理帧(绝不能阻塞事件循环)。
 		h.processFrame(payload, c)
 	}
 }
 
-// processFrame handles a complete protobuf frame from a gnet connection.
+// processFrame 处理来自 gnet 连接的完整 protobuf 帧。
 func (h *GnetHandler) processFrame(frame []byte, c gnet.Conn) {
 	ctxVal := c.Context()
 	if ctxVal == nil {
@@ -192,7 +192,7 @@ func (h *GnetHandler) processFrame(frame []byte, c gnet.Conn) {
 		return
 	}
 
-	// Check if this is a pending (unauthenticated) connection.
+	// 检查是否为待认证(未认证)连接。
 	if str, ok := ctxVal.(string); ok && str == "pending" {
 		client, err := h.handleLogin(frame, c)
 		if err != nil {
@@ -210,23 +210,23 @@ func (h *GnetHandler) processFrame(frame []byte, c gnet.Conn) {
 		return
 	}
 
-	// Parse protobuf.
+	// 解析 protobuf。
 	msg := &proto.Message{}
 	if err := pb.Unmarshal(frame, msg); err != nil {
 		log.Printf("[gnet] unmarshal error uid=%s fd=%d: %v", client.UID, c.Fd(), err)
 		return
 	}
 
-	// Update heartbeat timestamp.
+	// 更新心跳时间戳。
 	client.SetHeartbeat(time.Now())
 
-	// Security: overwrite From with authenticated UID.
+	// 安全:用已认证的 UID 覆盖 From 字段。
 	msg.From = client.UID
 	if msg.Timestamp == 0 {
 		msg.Timestamp = time.Now().UnixMilli()
 	}
 
-	// Offload to worker pool — do NOT block the event loop.
+	// 卸载到工作池 —— 绝不要阻塞事件循环。
 	router := h.router
 	ctx := h.ctx
 	h.workerPool.Submit(func() {
@@ -234,8 +234,8 @@ func (h *GnetHandler) processFrame(frame []byte, c gnet.Conn) {
 	})
 }
 
-// handleLogin processes the first message from a gnet client.
-// The first message must be CmdLogin with the JWT token in the Content field.
+// handleLogin 处理 gnet 客户端的第一条消息。
+// 第一条消息必须是 CmdLogin,且 JWT 令牌位于 Content 字段中。
 func (h *GnetHandler) handleLogin(frame []byte, c gnet.Conn) (*Client, error) {
 	msg := &proto.Message{}
 	if err := pb.Unmarshal(frame, msg); err != nil {
@@ -245,7 +245,7 @@ func (h *GnetHandler) handleLogin(frame []byte, c gnet.Conn) (*Client, error) {
 		return nil, fmt.Errorf("expected CmdLogin (%d), got cmd=%d", proto.CmdLogin, msg.Cmd)
 	}
 
-	// JWT token is in the Content field.
+	// JWT 令牌位于 Content 字段中。
 	claims, err := h.jwtMgr.Validate(msg.Content)
 	if err != nil {
 		return nil, fmt.Errorf("jwt: %w", err)
@@ -255,11 +255,11 @@ func (h *GnetHandler) handleLogin(frame []byte, c gnet.Conn) (*Client, error) {
 	client := NewClient(claims.UID, claims.Username, transport, h.clients, h.sendBufSize)
 	client.SetHeartbeat(time.Now())
 
-	// Register with Hub (may kick old connection).
+	// 注册到 Hub(可能踢掉旧连接)。
 	h.clients.Register(h.ctx, client)
 	h.connMap.Store(c.Fd(), client)
 
-	// Send login response.
+	// 发送登录响应。
 	client.Send(&proto.Message{
 		Cmd:       proto.CmdLoginResp,
 		To:        claims.UID,
@@ -267,39 +267,39 @@ func (h *GnetHandler) handleLogin(frame []byte, c gnet.Conn) (*Client, error) {
 		Timestamp: time.Now().UnixMilli(),
 	})
 
-	// Start write loop.
+	// 启动写循环。
 	go client.WriteLoop()
 
 	log.Printf("[gnet] client connected uid=%s username=%s fd=%d", claims.UID, claims.Username, c.Fd())
 	return client, nil
 }
 
-// OnBoot is called when the gnet engine starts. We save the engine reference
-// so we can call eng.Stop() during graceful shutdown.
+// OnBoot 在 gnet 引擎启动时被调用。我们保存引擎引用,
+// 以便在优雅关闭时调用 eng.Stop()。
 func (h *GnetHandler) OnBoot(eng gnet.Engine) gnet.Action {
 	h.engine = eng
 	h.engineSet = true
 	return gnet.None
 }
 
-// Shutdown gracefully stops the gnet server: cancels heartbeat checker,
-// stops the gnet engine (so no more events arrive), then closes the worker pool.
+// Shutdown 优雅地停止 gnet 服务器:取消心跳检查器,
+// 停止 gnet 引擎(不再有事件到达),然后关闭工作池。
 func (h *GnetHandler) Shutdown(ctx context.Context) error {
-	h.cancel() // stop heartbeat checker
+	h.cancel() // 停止心跳检查器
 
-	// Stop the engine first so no more events are dispatched to the worker pool.
+	// 先停止引擎,确保不再有事件派发到工作池。
 	if h.engineSet {
 		if err := h.engine.Stop(ctx); err != nil {
 			return err
 		}
 	}
 
-	// Now safe to close worker pool — no more Submit calls will arrive.
+	// 现在可以安全关闭工作池 —— 不再会有 Submit 调用到达。
 	h.workerPool.Close()
 	return nil
 }
 
-// startHeartbeatChecker periodically scans connections and kicks dead ones.
+// startHeartbeatChecker 定期扫描连接并剔除失效连接。
 func (h *GnetHandler) startHeartbeatChecker(ctx context.Context, checkInterval time.Duration) {
 	if checkInterval <= 0 {
 		checkInterval = 45 * time.Second

@@ -17,109 +17,109 @@ import (
 	pbproto "google.golang.org/protobuf/proto"
 )
 
-// Router handles message routing logic.
+// Router 处理消息路由逻辑。
 type Router struct {
 	clients     ClientRegistry
 	offline     OfflineStore
 	snow        *snowflake.Generator
 	dedup       *DedupCache
 	rateLimit   *RateLimiter
-	rateLimitMu sync.Mutex   // guards rateLimit field during SetRateLimit reconfiguration
-	msgStore    repo.MessageStore // nil when MySQL disabled
-	kafka       *mq.Producer    // nil when Kafka disabled
-	logicClient *LogicClient      // nil when gRPC Logic service disabled
+	rateLimitMu sync.Mutex   // 在 SetRateLimit 重配置期间保护 rateLimit 字段
+	msgStore    repo.MessageStore // MySQL 禁用时为 nil
+	kafka       *mq.Producer    // Kafka 禁用时为 nil
+	logicClient *LogicClient      // gRPC Logic 服务禁用时为 nil
 
-	// Multi-gateway horizontal scaling (nil/empty = single-node mode).
-	hashRing   *HashRing  // nil when multi-gateway disabled
-	forwarder  Forwarder  // nil when multi-gateway disabled
-	thisNodeID string     // "" when multi-gateway disabled
+	// 多网关水平扩展(nil/空 = 单节点模式)。
+	hashRing   *HashRing  // 多网关禁用时为 nil
+	forwarder  Forwarder  // 多网关禁用时为 nil
+	thisNodeID string     // 多网关禁用时为 ""
 
-	// Group chat support (nil = group chat disabled).
-	groupStore GroupStore // nil when group chat not initialized
+	// 群聊支持(nil = 群聊禁用)。
+	groupStore GroupStore // 群聊未初始化时为 nil
 
-	// Read/unread receipt tracking (nil = tracking disabled).
-	unreadTracker UnreadTracker // nil when unread tracking not initialized
+	// 已读/未读回执跟踪(nil = 跟踪禁用)。
+	unreadTracker UnreadTracker // 未读跟踪未初始化时为 nil
 
-	// Friend relationship management (nil = friend system disabled).
-	friendStore repo.FriendStore // nil when MySQL disabled
+	// 好友关系管理(nil = 好友系统禁用)。
+	friendStore repo.FriendStore // MySQL 禁用时为 nil
 
-	// persistSem bounds concurrent async persistence goroutines to prevent
-	// unbounded goroutine growth under high message throughput.
+	// persistSem 限制并发异步持久化 goroutine 的数量,
+	// 防止高消息吞吐下 goroutine 无限增长。
 	persistSem chan struct{}
 
-	// Configurable operational parameters (previously hardcoded constants).
-	recallWindow int64         // message recall window in milliseconds
-	historyLimit int           // default history page size
-	searchLimit  int           // default search result limit
-	rlCleanup    time.Duration // rate limiter stale bucket cleanup interval
+	// 可配置的运行参数(原为硬编码常量)。
+	recallWindow int64         // 消息撤回窗口(毫秒)
+	historyLimit int           // 默认历史记录分页大小
+	searchLimit  int           // 默认搜索结果上限
+	rlCleanup    time.Duration // 限流器过期桶清理间隔
 }
 
-// SetKafkaProducer injects a Kafka producer for async message persistence.
-// When nil (the default), Kafka is not used.
+// SetKafkaProducer 注入用于异步消息持久化的 Kafka 生产者。
+// 为 nil(默认值)时不使用 Kafka。
 func (r *Router) SetKafkaProducer(p *mq.Producer) {
 	r.kafka = p
 }
 
-// SetLogicClient injects a gRPC client for the Logic service (history, user queries).
-// When nil (the default), the local MessageStore is used.
+// SetLogicClient 注入指向 Logic 服务的 gRPC 客户端(历史记录、用户查询)。
+// 为 nil(默认值)时使用本地 MessageStore。
 func (r *Router) SetLogicClient(c *LogicClient) {
 	r.logicClient = c
 }
 
-// SetHashRing injects the consistent hash ring for multi-gateway routing.
-// When nil (the default), all messages are delivered or stored locally.
+// SetHashRing 注入用于多网关路由的一致性哈希环。
+// 为 nil(默认值)时,所有消息都在本地投递或存储。
 func (r *Router) SetHashRing(hr *HashRing) {
 	r.hashRing = hr
 }
 
-// SetForwarder injects the cross-gateway message forwarder.
-// When nil (the default), the Router does not attempt to forward to peers.
+// SetForwarder 注入跨网关消息转发器。
+// 为 nil(默认值)时,Router 不会尝试转发给对端。
 func (r *Router) SetForwarder(f Forwarder) {
 	r.forwarder = f
 }
 
-// SetThisNodeID sets the local Gateway's node ID for hash ring comparisons.
+// SetThisNodeID 设置本地 Gateway 的节点 ID,用于哈希环比较。
 func (r *Router) SetThisNodeID(id string) {
 	r.thisNodeID = id
 }
 
-// SetGroupStore injects a GroupStore for group chat message fan-out.
-// When nil (the default), group chat messages are treated as single-chat.
+// SetGroupStore 注入用于群聊消息扇出的 GroupStore。
+// 为 nil(默认值)时,群聊消息按单聊处理。
 func (r *Router) SetGroupStore(gs GroupStore) {
 	r.groupStore = gs
 }
 
-// SetUnreadTracker injects an UnreadTracker for read receipt and unread count support.
-// When nil (the default), unread tracking is disabled.
+// SetUnreadTracker 注入用于已读回执和未读计数支持的 UnreadTracker。
+// 为 nil(默认值)时,未读跟踪被禁用。
 func (r *Router) SetUnreadTracker(ut UnreadTracker) {
 	r.unreadTracker = ut
 }
 
-// SetDedupRedis enables Redis-backed durability for the dedup cache.
-// When nil (the default), dedup is memory-only. Call during startup before
-// the server starts accepting connections.
+// SetDedupRedis 为去重缓存启用基于 Redis 的持久化。
+// 为 nil(默认值)时,去重仅使用内存。请在启动期间、
+// 服务器开始接受连接之前调用。
 func (r *Router) SetDedupRedis(rdb *redis.Client) {
 	r.dedup.SetRedis(rdb)
 }
 
-// SetFriendStore injects a FriendStore for friend request/response handling.
-// When nil (the default), friend management is unavailable.
+// SetFriendStore 注入用于好友请求/响应处理的 FriendStore。
+// 为 nil(默认值)时,好友管理不可用。
 func (r *Router) SetFriendStore(fs repo.FriendStore) {
 	r.friendStore = fs
 }
 
-// RouterConfig holds tunable operational parameters for the Router.
-// These were previously hardcoded constants; they are now configurable.
+// RouterConfig 保存 Router 可调运行参数。
+// 这些参数原为硬编码常量,现在可配置。
 type RouterConfig struct {
-	DedupTTL            time.Duration // dedup cache entry TTL, default 5m
-	PersistConcurrency  int           // max concurrent async persist goroutines, default 64
-	RecallWindowMs      int64         // message recall window in milliseconds, default 120000
-	HistoryDefaultLimit int           // default history page size, default 30
-	SearchDefaultLimit  int           // default search result limit, default 20
-	RateLimitCleanup    time.Duration // rate limiter stale bucket cleanup interval, default 5m
+	DedupTTL            time.Duration // 去重缓存条目 TTL,默认 5 分钟
+	PersistConcurrency  int           // 最大并发异步持久化 goroutine 数,默认 64
+	RecallWindowMs      int64         // 消息撤回窗口(毫秒),默认 120000
+	HistoryDefaultLimit int           // 默认历史记录分页大小,默认 30
+	SearchDefaultLimit  int           // 默认搜索结果上限,默认 20
+	RateLimitCleanup    time.Duration // 限流器过期桶清理间隔,默认 5 分钟
 }
 
-// DefaultRouterConfig returns sensible defaults for RouterConfig.
+// DefaultRouterConfig 返回 RouterConfig 的合理默认值。
 func DefaultRouterConfig() RouterConfig {
 	return RouterConfig{
 		DedupTTL:            5 * time.Minute,
@@ -131,7 +131,7 @@ func DefaultRouterConfig() RouterConfig {
 	}
 }
 
-// NewRouter creates a Router. Rate limiting is set separately via SetRateLimitConfig.
+// NewRouter 创建一个 Router。限流通过 SetRateLimitConfig 单独设置。
 func NewRouter(clients ClientRegistry, offline OfflineStore, snow *snowflake.Generator, msgStore repo.MessageStore, cfg RouterConfig) *Router {
 	if cfg.PersistConcurrency <= 0 {
 		cfg.PersistConcurrency = 64
@@ -153,13 +153,13 @@ func NewRouter(clients ClientRegistry, offline OfflineStore, snow *snowflake.Gen
 	}
 }
 
-// SetRateLimit configures rate limiting. When rate <= 0, rate limiting is disabled.
-// Stops any previously running RateLimiter to prevent goroutine leaks.
+// SetRateLimit 配置限流。当 rate <= 0 时限流被禁用。
+// 会停止先前运行的 RateLimiter,防止 goroutine 泄漏。
 func (r *Router) SetRateLimit(rate, burst int) {
 	r.rateLimitMu.Lock()
 	defer r.rateLimitMu.Unlock()
 
-	// Stop old limiter to prevent goroutine leak.
+	// 停止旧的限流器,防止 goroutine 泄漏。
 	if r.rateLimit != nil {
 		r.rateLimit.Stop()
 	}
@@ -174,8 +174,8 @@ func (r *Router) SetRateLimit(rate, burst int) {
 	}
 }
 
-// Search performs a fulltext search via the local MessageStore.
-// Returns nil, nil if no MessageStore is configured.
+// Search 通过本地 MessageStore 执行全文搜索。
+// 未配置 MessageStore 时返回 nil, nil。
 func (r *Router) Search(ctx context.Context, params *repo.SearchParams) (*repo.SearchResult, error) {
 	if r.msgStore == nil {
 		return nil, nil
@@ -183,8 +183,8 @@ func (r *Router) Search(ctx context.Context, params *repo.SearchParams) (*repo.S
 	return r.msgStore.SearchMessages(ctx, params)
 }
 
-// Stop gracefully stops background goroutines owned by the router
-// (dedup cache cleanup, rate limiter cleanup).
+// Stop 优雅地停止 Router 拥有的后台 goroutine
+// (去重缓存清理、限流器清理)。
 func (r *Router) Stop() {
 	if r.dedup != nil {
 		r.dedup.Stop()
@@ -196,8 +196,8 @@ func (r *Router) Stop() {
 	r.rateLimitMu.Unlock()
 }
 
-// checkRateLimit returns true if the user exceeded the rate limit.
-// Thread-safe: acquires rateLimitMu to read the rate limiter pointer.
+// checkRateLimit 如果用户超出限流则返回 true。
+// 线程安全:获取 rateLimitMu 以读取限流器指针。
 func (r *Router) checkRateLimit(uid string) bool {
 	r.rateLimitMu.Lock()
 	rl := r.rateLimit
@@ -208,11 +208,11 @@ func (r *Router) checkRateLimit(uid string) bool {
 	return false
 }
 
-// persistAsync asynchronously persists a message to Kafka or MySQL.
-// It is a non-blocking, best-effort operation — failures are logged but never
-// propagated to the caller. A semaphore bounds concurrent persist goroutines.
+// persistAsync 将消息异步持久化到 Kafka 或 MySQL。
+// 它是非阻塞的尽力而为操作 —— 失败仅记录日志,绝不
+// 传递给调用方。信号量限制并发持久化 goroutine。
 func (r *Router) persistAsync(ctx context.Context, msg *proto.Message) {
-	// Kafka async persistence (fire-and-forget).
+	// Kafka 异步持久化(即发即忘)。
 	if r.kafka != nil {
 		msgCopy := pbproto.Clone(msg).(*proto.Message)
 		log.Printf("[router] persistAsync: publishing msgId=%d cmd=%d via Kafka", msg.MsgId, msg.Cmd)
@@ -222,8 +222,8 @@ func (r *Router) persistAsync(ctx context.Context, msg *proto.Message) {
 			r.kafka.Publish(context.WithoutCancel(ctx), msgCopy)
 		}()
 	}
-	// Direct MySQL persistence as safety net (always attempted when available).
-	// This ensures messages survive even when Kafka has issues.
+	// 直接写 MySQL 作为安全网(可用时始终尝试)。
+	// 这确保即使 Kafka 出问题,消息也不会丢失。
 	if r.msgStore != nil {
 		msgCopy := pbproto.Clone(msg).(*proto.Message)
 		log.Printf("[router] persistAsync: dispatching msgId=%d to MySQL (from=%s to=%s cmd=%d)", msg.MsgId, msg.From, msg.To, msg.Cmd)
@@ -242,10 +242,10 @@ func (r *Router) persistAsync(ctx context.Context, msg *proto.Message) {
 	}
 }
 
-// Route dispatches an incoming message from a client.
+// Route 分发来自客户端的消息。
 func (r *Router) Route(ctx context.Context, sender *Client, msg *proto.Message) {
-	// Reject uninitialized or out-of-range commands early. This catches the
-	// protobuf zero value (CmdNone=0) which would otherwise be silently dropped.
+	// 尽早拒绝未初始化或超出范围的命令。这会捕获
+	// protobuf 零值(CmdNone=0),否则它会被静默丢弃。
 	if err := msg.Validate(); err != nil {
 		log.Printf("[router] invalid message from %s: %v (cmd=%d)", sender.UID, err, msg.Cmd)
 		return
@@ -253,15 +253,15 @@ func (r *Router) Route(ctx context.Context, sender *Client, msg *proto.Message) 
 
 	switch msg.Cmd {
 	case proto.CmdNone:
-		// Should be unreachable — Validate() rejects CmdNone. Keep as a defensive
-		// fallback for messages that bypass validation (e.g. internal construction).
+		// 不应到达此处 —— Validate() 会拒绝 CmdNone。保留作为
+		// 绕过校验的消息(如内部构造)的防御性回退。
 		log.Printf("[router] received CmdNone (uninitialized message) from %s — this should not happen", sender.UID)
 	case proto.CmdHeartbeat:
 		r.handleHeartbeat(ctx, sender, msg)
 	case proto.CmdChat:
 		r.handleChat(ctx, sender, msg)
 	case proto.CmdFile:
-		r.handleChat(ctx, sender, msg) // file messages go through the full chat pipeline
+		r.handleChat(ctx, sender, msg) // 文件消息走完整的聊天处理流程
 	case proto.CmdOffline:
 		r.handleOffline(ctx, sender)
 	case proto.CmdHistory:
@@ -297,7 +297,7 @@ func (r *Router) Route(ctx context.Context, sender *Client, msg *proto.Message) 
 	case proto.CmdEdit:
 		r.handleEdit(ctx, sender, msg)
 	case proto.CmdKick:
-		// Server-initiated only; clients should not send this
+		// 仅服务器发起;客户端不应发送此命令
 		log.Printf("[router] unexpected CmdKick from %s — ignored", sender.UID)
 	default:
 		log.Printf("[router] unknown cmd=%d from=%s", msg.Cmd, sender.UID)
@@ -313,34 +313,34 @@ func (r *Router) handleHeartbeat(ctx context.Context, sender *Client, msg *proto
 	sender.Send(resp)
 }
 
-// handleRecall processes a message recall request. The sender asks to delete a
-// previously sent message. Seq carries the original message's MsgID.
-// Only single-chat recall is supported; the sender must be the original author
-// and the message must be within the 2-minute recall window.
+// handleRecall 处理消息撤回请求。发送方请求删除一条已发送的消息。
+// Seq 携带原消息的 MsgID。
+// 仅支持单聊撤回;发送方必须是原消息作者,
+// 且消息必须在 2 分钟撤回窗口内。
 func (r *Router) handleRecall(ctx context.Context, sender *Client, msg *proto.Message) {
-	// Validate basic fields (Cmd range, target required).
+	// 校验基本字段(Cmd 范围、必须有目标)。
 	if err := msg.Validate(); err != nil {
 		log.Printf("[router] recall from %s invalid: %v", sender.UID, err)
 		return
 	}
-	// Self-recall is not allowed.
+	// 不允许对自己发起撤回。
 	if msg.To == sender.UID {
 		log.Printf("[router] recall from %s dropped: self-target", sender.UID)
 		return
 	}
-	// Seq must carry the original message's MsgID.
+	// Seq 必须携带原消息的 MsgID。
 	if msg.Seq == 0 {
 		log.Printf("[router] recall from %s dropped: missing original MsgId (seq=0)", sender.UID)
 		r.sendRecallError(sender, "missing original message ID")
 		return
 	}
 
-	// Security: overwrite From with the authenticated sender UID.
+	// 安全:用已认证的发送方 UID 覆盖 From 字段。
 	msg.From = sender.UID
 
 
-	// Mark the original message as recalled in the persistent store.
-	// The recall window is enforced by the store layer via the message timestamp.
+	// 在持久化存储中将原消息标记为已撤回。
+	// 撤回窗口由存储层通过消息时间戳强制执行。
 	if r.msgStore != nil {
 		if err := r.msgStore.RecallMessage(ctx, msg.Seq, sender.UID, r.recallWindow); err != nil {
 			log.Printf("[router] recall from %s for msg=%d failed: %v", sender.UID, msg.Seq, err)
@@ -349,17 +349,16 @@ func (r *Router) handleRecall(ctx context.Context, sender *Client, msg *proto.Me
 		}
 	}
 
-	// Assign a message ID and timestamp for the recall notification.
+	// 为撤回通知分配消息 ID 和时间戳。
 	msg.MsgId = r.snow.Next()
 	msg.Timestamp = time.Now().UnixMilli()
 
-	// Build the recall notification for the target peer.
-	// The Seq field carries the original message's MsgID so the client knows which
-	// message to remove. Content is intentionally empty — the CmdRecall itself is
-	// the signal.
+	// 为对端构建撤回通知。
+	// Seq 字段携带原消息的 MsgID,使客户端知道要移除哪条消息。
+	// Content 有意留空 —— CmdRecall 本身就是信号。
 	msg.Content = fmt.Sprintf(`{"recalled":true,"msg_id":%d}`, msg.Seq)
 
-	// Try local delivery first.
+	// 先尝试本地投递。
 	target := r.clients.Get(ctx, msg.To)
 	if target != nil {
 		if err := target.Send(msg); err != nil {
@@ -369,11 +368,11 @@ func (r *Router) handleRecall(ctx context.Context, sender *Client, msg *proto.Me
 		return
 	}
 
-	// Target not local — forward to peer Gateway or store offline.
+	// 目标不在本地 —— 转发到对端 Gateway 或存储离线。
 	r.routeOrStoreOffline(ctx, msg.To, msg)
 }
 
-// sendRecallError sends an error response for a failed recall request.
+// sendRecallError 为失败的撤回请求发送错误响应。
 func (r *Router) sendRecallError(sender *Client, reason string) {
 	sender.Send(&proto.Message{
 		Cmd:       proto.CmdRecall,
@@ -385,10 +384,10 @@ func (r *Router) sendRecallError(sender *Client, reason string) {
 }
 
 func (r *Router) handleChat(ctx context.Context, sender *Client, msg *proto.Message) {
-	// --- Deduplication check ---
+	// --- 去重检查 ---
 	if msg.Seq > 0 {
 		if isDup, existingMsgID := r.dedup.IsDuplicate(sender.UID, msg.Seq); isDup {
-			// Resend ACK with the previously assigned MsgID
+			// 用先前分配的 MsgID 重新发送 ACK
 			if msg.NeedAck {
 				ack := &proto.Message{
 					Cmd:       proto.CmdAck,
@@ -404,30 +403,29 @@ func (r *Router) handleChat(ctx context.Context, sender *Client, msg *proto.Mess
 		}
 	}
 
-	// --- Validation ---
+	// --- 校验 ---
 	if err := msg.Validate(); err != nil {
 		log.Printf("[router] invalid message from %s: %v", sender.UID, err)
 		return
 	}
 
-	// --- Rate limiting ---
+	// --- 限流 ---
 	if r.checkRateLimit(sender.UID) {
 		log.Printf("[router] rate limited uid=%s", sender.UID)
 		return
 	}
 
-	// Assign a globally unique message ID
+	// 分配全局唯一的消息 ID
 	msg.MsgId = r.snow.Next()
 	msg.Timestamp = time.Now().UnixMilli()
 
-	// Deliver to target(s).
-	// NOTE: Dedup Mark is called AFTER delivery, not before.
-	// If the send buffer is full and we marked first, the client's retry
-	// would be silently dropped (message loss). Marking after ensures
-	// at-least-once semantics for online targets.
+	// 投递给目标。
+	// 注意:去重 Mark 在投递之后调用,而非之前。
+	// 如果发送缓冲区已满而我们先做了标记,客户端的重试会被静默丢弃
+	// (消息丢失)。投递后再标记可确保在线目标的至少一次语义。
 	if msg.ChatType == proto.ChatTypeGroup && r.groupStore != nil {
 		r.fanoutGroup(ctx, sender, msg)
-		// Group fanout: mark after all members processed.
+		// 群扇出:所有成员处理完后再标记。
 		if msg.Seq > 0 {
 			r.dedup.Mark(sender.UID, msg.Seq, msg.MsgId)
 		}
@@ -435,16 +433,16 @@ func (r *Router) handleChat(ctx context.Context, sender *Client, msg *proto.Mess
 		target := r.clients.Get(ctx, msg.To)
 		if target != nil {
 			if err := target.Send(msg); err != nil {
-				// Send failed (buffer full) — store offline, but do NOT mark yet
-				// so the client can retry for online delivery.
+				// 发送失败(缓冲区满)—— 转存离线,但暂不标记,
+				// 以便客户端重试在线投递。
 				log.Printf("[router] send failed for %s, storing offline: %v", msg.To, err)
 				r.offline.StoreOffline(ctx, msg.To, msg)
 			} else if msg.Seq > 0 {
-				// Online delivery succeeded — safe to mark.
+				// 在线投递成功 —— 可以安全标记。
 				r.dedup.Mark(sender.UID, msg.Seq, msg.MsgId)
 			}
 		} else {
-			// Target not locally online — route or store offline.
+			// 目标不在本地在线 —— 路由或转存离线。
 			r.routeOrStoreOffline(ctx, msg.To, msg)
 			if msg.Seq > 0 {
 				r.dedup.Mark(sender.UID, msg.Seq, msg.MsgId)
@@ -452,9 +450,9 @@ func (r *Router) handleChat(ctx context.Context, sender *Client, msg *proto.Mess
 		}
 	}
 
-	// Increment unread count for the target(s).
-	// For single chat: the target gets +1 unread from the sender.
-	// For group chat: ALL members except sender get +1 unread from the sender.
+	// 增加目标的未读计数。
+	// 单聊:目标获得来自发送方的 +1 未读。
+	// 群聊:除发送方外的所有成员获得来自发送方的 +1 未读。
 	if r.unreadTracker != nil {
 		if msg.ChatType == proto.ChatTypeGroup && r.groupStore != nil {
 			members, err := r.groupStore.GetMembers(ctx, msg.To)
@@ -472,7 +470,7 @@ func (r *Router) handleChat(ctx context.Context, sender *Client, msg *proto.Mess
 		}
 	}
 
-	// Send ACK to sender
+	// 向发送方发送 ACK
 	if msg.NeedAck {
 		ack := &proto.Message{
 			Cmd:       proto.CmdAck,
@@ -487,13 +485,12 @@ func (r *Router) handleChat(ctx context.Context, sender *Client, msg *proto.Mess
 	r.persistAsync(ctx, msg)
 }
 
-// routeOrStoreOffline decides where to deliver or store a message when the target
-// is not connected locally. In single-node mode (no hash ring configured), the
-// message is stored offline locally. In multi-node mode, the hash ring determines
-// the owner node: if it's this node, store offline; otherwise forward to the peer.
-// If forwarding fails, the message is stored offline locally as a fallback.
+// 当目标未在本地连接时,routeOrStoreOffline 决定消息的投递或存储位置。
+// 单节点模式(未配置哈希环)下,消息在本地转存离线。
+// 多节点模式下,哈希环决定归属节点:如果是本节点则转存离线;
+// 否则转发给对端。如果转发失败,消息在本地转存离线作为回退。
 func (r *Router) routeOrStoreOffline(ctx context.Context, targetUID string, msg *proto.Message) {
-	// No multi-gateway configured — store offline locally (backward compatible).
+	// 未配置多网关 —— 在本地转存离线(向后兼容)。
 	if r.hashRing == nil || r.thisNodeID == "" {
 		r.offline.StoreOffline(ctx, targetUID, msg)
 		log.Printf("[router] stored offline message for %s from %s", targetUID, msg.From)
@@ -502,14 +499,14 @@ func (r *Router) routeOrStoreOffline(ctx context.Context, targetUID string, msg 
 
 	ownerNode := r.hashRing.Get(targetUID)
 	if ownerNode == "" || ownerNode == r.thisNodeID {
-		// Empty ring or this node owns the user — user is genuinely offline.
+		// 环为空或本节点拥有该用户 —— 用户确实离线。
 		r.offline.StoreOffline(ctx, targetUID, msg)
 		log.Printf("[router] stored offline message for %s from %s (this node owns %s)",
 			targetUID, msg.From, targetUID)
 		return
 	}
 
-	// Forward to the peer Gateway that owns the target user.
+	// 转发给拥有目标用户的对端 Gateway。
 	if r.forwarder == nil {
 		log.Printf("[router] forwarder not configured, storing offline locally for %s", targetUID)
 		r.offline.StoreOffline(ctx, targetUID, msg)
@@ -518,7 +515,7 @@ func (r *Router) routeOrStoreOffline(ctx context.Context, targetUID string, msg 
 
 	delivered, err := r.forwarder.Forward(ctx, targetUID, msg)
 	if err != nil {
-		// Forward failed (network error, peer down) — fallback to local offline storage.
+		// 转发失败(网络错误、对端宕机)—— 回退到本地离线存储。
 		log.Printf("[router] forward to %s for %s failed: %v — storing offline locally",
 			ownerNode, targetUID, err)
 		r.offline.StoreOffline(ctx, targetUID, msg)
@@ -532,9 +529,9 @@ func (r *Router) routeOrStoreOffline(ctx context.Context, targetUID string, msg 
 	}
 }
 
-// fanoutGroup delivers a group chat message to all members except the sender.
-// Each member is delivered independently: online members get the message pushed;
-// offline members get it stored; failures on one member don't block others.
+// fanoutGroup 将群聊消息投递给除发送方外的所有成员。
+// 每个成员独立投递:在线成员实时推送;离线成员转存;
+// 一个成员失败不影响其他成员。
 func (r *Router) fanoutGroup(ctx context.Context, sender *Client, msg *proto.Message) {
 	members, err := r.groupStore.GetMembers(ctx, msg.To)
 	if err != nil {
@@ -545,7 +542,7 @@ func (r *Router) fanoutGroup(ctx context.Context, sender *Client, msg *proto.Mes
 	delivered := 0
 	for _, memberUID := range members {
 		if memberUID == sender.UID {
-			continue // don't deliver to self
+			continue // 不投递给自己
 		}
 
 		target := r.clients.Get(ctx, memberUID)
@@ -557,7 +554,7 @@ func (r *Router) fanoutGroup(ctx context.Context, sender *Client, msg *proto.Mes
 				delivered++
 			}
 		} else {
-			// Member not connected locally — forward or store offline.
+			// 成员未在本地连接 —— 转发或转存离线。
 			r.routeOrStoreOffline(ctx, memberUID, msg)
 		}
 	}
@@ -566,15 +563,15 @@ func (r *Router) fanoutGroup(ctx context.Context, sender *Client, msg *proto.Mes
 		msg.To, delivered, len(members)-1)
 }
 
-// fanoutGroupWithMembers delivers a message to an explicit list of group members.
-// Unlike fanoutGroup, it does not query the local GroupStore — the caller provides
-// the member UIDs directly. This is used when group membership is managed
-// externally (e.g. via gRPC Logic service) to avoid double-writes.
+// fanoutGroupWithMembers 将消息投递给显式给定的群成员列表。
+// 与 fanoutGroup 不同,它不查询本地 GroupStore —— 由调用方直接
+// 提供成员 UID。当群成员关系由外部管理时(例如通过 gRPC Logic 服务)
+// 使用此方法,以避免双重写入。
 func (r *Router) fanoutGroupWithMembers(ctx context.Context, sender *Client, msg *proto.Message, members []string) {
 	delivered := 0
 	for _, memberUID := range members {
 		if memberUID == sender.UID {
-			continue // don't deliver to self
+			continue // 不投递给自己
 		}
 
 		target := r.clients.Get(ctx, memberUID)
@@ -586,7 +583,7 @@ func (r *Router) fanoutGroupWithMembers(ctx context.Context, sender *Client, msg
 				delivered++
 			}
 		} else {
-			// Member not connected locally — forward or store offline.
+			// 成员未在本地连接 —— 转发或转存离线。
 			r.routeOrStoreOffline(ctx, memberUID, msg)
 		}
 	}
@@ -609,7 +606,7 @@ func (r *Router) handleOffline(ctx context.Context, sender *Client) {
 	delivered := 0
 	for _, msg := range msgs {
 		if err := sender.Send(msg); err != nil {
-			// Re-enqueue undelivered messages back to offline storage.
+			// 将未送达的消息重新放回离线存储。
 			for _, m := range msgs[delivered:] {
 				r.offline.StoreOffline(ctx, sender.UID, m)
 			}
@@ -624,19 +621,19 @@ func (r *Router) handleOffline(ctx context.Context, sender *Client) {
 }
 
 func (r *Router) handleHistory(ctx context.Context, sender *Client, msg *proto.Message) {
-	// Validate — ensures To field is present.
+	// 校验 —— 确保 To 字段存在。
 	if err := msg.Validate(); err != nil {
 		log.Printf("[router] invalid history request from %s: %v", sender.UID, err)
 		return
 	}
 
-	// Parse pagination parameters from the message.
+	// 从消息中解析分页参数。
 	limit := int(msg.Seq)
 	if limit <= 0 {
-		limit = r.historyLimit // default page size
+		limit = r.historyLimit // 默认分页大小
 	}
 	if limit > 100 {
-		limit = 100 // cap
+		limit = 100 // 上限
 	}
 
 	before := msg.Timestamp
@@ -644,9 +641,9 @@ func (r *Router) handleHistory(ctx context.Context, sender *Client, msg *proto.M
 		before = time.Now().UnixMilli()
 	}
 
-	// Query conversation history.
-	// Prefer gRPC Logic service, fall back to local MessageStore, then empty.
-	// Group history goes directly through local MessageStore (gRPC path is Step 3).
+	// 查询会话历史。
+	// 优先 gRPC Logic 服务,回退到本地 MessageStore,再退化为空。
+	// 群聊历史直接走本地 MessageStore(gRPC 路径是第 3 步)。
 	var msgs []*proto.Message
 	var err error
 
@@ -673,7 +670,7 @@ func (r *Router) handleHistory(ctx context.Context, sender *Client, msg *proto.M
 	}
 
 	if msgs == nil && r.msgStore == nil && r.logicClient == nil {
-		// No persistence layer at all — return empty completion.
+		// 完全没有持久化层 —— 返回空完成信号。
 		sender.Send(&proto.Message{
 			Cmd:       proto.CmdHistory,
 			MsgId:     r.snow.Next(),
@@ -682,7 +679,7 @@ func (r *Router) handleHistory(ctx context.Context, sender *Client, msg *proto.M
 		return
 	}
 
-	// Send each history message preserving original MsgId, From, Timestamp, etc.
+	// 逐条发送历史消息,保留原始 MsgId、From、Timestamp 等。
 	delivered := 0
 	for _, m := range msgs {
 		if err := sender.Send(m); err != nil {
@@ -693,7 +690,7 @@ func (r *Router) handleHistory(ctx context.Context, sender *Client, msg *proto.M
 		delivered++
 	}
 
-	// Signal completion with the count of delivered messages in Seq.
+	// 在 Seq 中携带已投递消息数量作为完成信号。
 	sender.Send(&proto.Message{
 		Cmd:       proto.CmdHistory,
 		Seq:       int64(delivered),
@@ -704,25 +701,25 @@ func (r *Router) handleHistory(ctx context.Context, sender *Client, msg *proto.M
 	log.Printf("[router] delivered %d history messages to %s (with=%s)", delivered, sender.UID, msg.To)
 }
 
-// handleReadReceipt processes a read receipt from a client.
-// It clears the sender's unread count from the peer, then forwards the receipt
-// to the original sender (peerUID) so their client knows the messages were read.
-// Read receipts are ephemeral: if the peer is offline, the receipt is dropped.
+// handleReadReceipt 处理来自客户端的已读回执。
+// 它清除对方发给阅读者的未读计数,然后将回执转发给原发送方(peerUID),
+// 使对方客户端知道消息已被阅读。
+// 已读回执是临时的:如果对方离线,回执会被丢弃。
 func (r *Router) handleReadReceipt(ctx context.Context, sender *Client, msg *proto.Message) {
-	peerUID := msg.To // the user whose messages were read by sender
+	peerUID := msg.To // 被发送方阅读了消息的用户
 
-	// Validate: peerUID is required and must differ from sender.
+	// 校验:peerUID 必填且不能与发送方相同。
 	if peerUID == "" || peerUID == sender.UID {
 		log.Printf("[router] invalid read receipt from %s: peer=%q", sender.UID, peerUID)
 		return
 	}
 
-	// 1. Clear the unread count for the reader (sender) from the peer.
-	// Try gRPC Logic service first, fall back to local tracker.
+	// 1. 清除对方发给阅读者(发送方)的未读计数。
+	// 优先 gRPC Logic 服务,回退到本地跟踪器。
 	if r.logicClient != nil {
 		if err := r.logicClient.MarkReadClient(ctx, sender.UID, peerUID); err != nil {
 			log.Printf("[router] gRPC MarkRead error: %v", err)
-			// Fall back to local tracker on gRPC failure.
+			// gRPC 失败时回退到本地跟踪器。
 			if r.unreadTracker != nil {
 				r.unreadTracker.MarkRead(ctx, sender.UID, peerUID)
 			}
@@ -731,17 +728,17 @@ func (r *Router) handleReadReceipt(ctx context.Context, sender *Client, msg *pro
 		r.unreadTracker.MarkRead(ctx, sender.UID, peerUID)
 	}
 
-	// 2. Build a read receipt notification for the original sender (peerUID).
+	// 2. 为原发送方(peerUID)构建已读回执通知。
 	receipt := &proto.Message{
 		Cmd:       proto.CmdReadReceipt,
 		MsgId:     r.snow.Next(),
-		From:      sender.UID, // who read the messages
-		To:        peerUID,    // should be notified
-		Seq:       msg.MsgId,  // carry the last read message ID
+		From:      sender.UID, // 谁阅读了消息
+		To:        peerUID,    // 应被通知的人
+		Seq:       msg.MsgId,  // 携带最后一条已读消息的 ID
 		Timestamp: time.Now().UnixMilli(),
 	}
 
-	// 3. Try local delivery first.
+	// 3. 先尝试本地投递。
 	target := r.clients.Get(ctx, peerUID)
 	if target != nil {
 		if err := target.Send(receipt); err != nil {
@@ -750,7 +747,7 @@ func (r *Router) handleReadReceipt(ctx context.Context, sender *Client, msg *pro
 		return
 	}
 
-	// 4. Try cross-gateway forwarding via hash ring.
+	// 4. 尝试通过哈希环跨网关转发。
 	if r.hashRing != nil && r.thisNodeID != "" {
 		ownerNode := r.hashRing.Get(peerUID)
 		if ownerNode != "" && ownerNode != r.thisNodeID && r.forwarder != nil {
@@ -761,14 +758,14 @@ func (r *Router) handleReadReceipt(ctx context.Context, sender *Client, msg *pro
 		}
 	}
 
-	// 5. Peer is offline or unreachable — drop the receipt.
+	// 5. 对方离线或不可达 —— 丢弃回执。
 	log.Printf("[router] read receipt from %s for %s dropped (peer offline)",
 		sender.UID, peerUID)
 }
 
-// handleUnreadCount returns per-peer unread counts for the requesting user.
+// handleUnreadCount 返回请求用户的各会话未读计数。
 func (r *Router) handleUnreadCount(ctx context.Context, sender *Client, msg *proto.Message) {
-	// Try gRPC Logic service first, fall back to local tracker.
+	// 优先 gRPC Logic 服务,回退到本地跟踪器。
 	counts := map[string]int64{}
 	if r.logicClient != nil {
 		if remoteCounts, err := r.logicClient.GetUnreadCountsClient(ctx, sender.UID); err == nil && remoteCounts != nil {
@@ -799,11 +796,11 @@ func (r *Router) handleUnreadCount(ctx context.Context, sender *Client, msg *pro
 	sender.Send(resp)
 }
 
-// handleSearch performs a fulltext search on message content.
-// The search query and filters are JSON-encoded in msg.Content.
-// Results are sent as individual messages followed by a completion signal.
+// handleSearch 对消息内容执行全文搜索。
+// 搜索查询和过滤条件以 JSON 编码在 msg.Content 中。
+// 结果逐条发送,随后发送完成信号。
 func (r *Router) handleSearch(ctx context.Context, sender *Client, msg *proto.Message) {
-	// Parse search params from Content (JSON).
+	// 从 Content(JSON)中解析搜索参数。
 	var params repo.SearchParams
 	if msg.Content != "" {
 		if err := json.Unmarshal([]byte(msg.Content), &params); err != nil {
@@ -819,7 +816,7 @@ func (r *Router) handleSearch(ctx context.Context, sender *Client, msg *proto.Me
 	}
 	params.UID = sender.UID
 
-	// Defaults.
+	// 默认值。
 	if params.Limit <= 0 {
 		params.Limit = r.searchLimit
 	}
@@ -827,7 +824,7 @@ func (r *Router) handleSearch(ctx context.Context, sender *Client, msg *proto.Me
 		params.Limit = 50
 	}
 
-	// Try gRPC Logic service first, fall back to local MessageStore.
+	// 优先 gRPC Logic 服务,回退到本地 MessageStore。
 	var result *repo.SearchResult
 	var searchErr error
 	if r.logicClient != nil {
@@ -858,7 +855,7 @@ func (r *Router) handleSearch(ctx context.Context, sender *Client, msg *proto.Me
 	}
 
 	if result == nil || len(result.Messages) == 0 {
-		// No results — send empty completion.
+		// 无结果 —— 发送空的完成信号。
 		sender.Send(&proto.Message{
 			Cmd:       proto.CmdSearch,
 			MsgId:     r.snow.Next(),
@@ -868,7 +865,7 @@ func (r *Router) handleSearch(ctx context.Context, sender *Client, msg *proto.Me
 		return
 	}
 
-	// Send each matching message.
+	// 逐条发送匹配的消息。
 	delivered := 0
 	for _, m := range result.Messages {
 		if err := sender.Send(m); err != nil {
@@ -877,7 +874,7 @@ func (r *Router) handleSearch(ctx context.Context, sender *Client, msg *proto.Me
 		delivered++
 	}
 
-	// Send completion signal with count and next cursor.
+	// 发送带数量和下一个游标的完成信号。
 	completion, _ := json.Marshal(map[string]interface{}{
 		"delivered":   delivered,
 		"next_cursor": result.NextCursor,
@@ -893,18 +890,17 @@ func (r *Router) handleSearch(ctx context.Context, sender *Client, msg *proto.Me
 	log.Printf("[router] search for %s (q=%q): delivered %d results", sender.UID, params.Query, delivered)
 }
 
-// sendGroupNotification constructs a system notification for group events
-// (member join/leave) and delivers it to all group members via fanout + persist.
-// It fetches the member list from the local GroupStore.
+// sendGroupNotification 为群事件(成员加入/离开)构造系统通知,
+// 并通过扇出 + 持久化投递给所有群成员。
+// 它从本地 GroupStore 获取成员列表。
 func (r *Router) sendGroupNotification(ctx context.Context, fromUID, groupID, notifType string) {
 	r.sendGroupNotificationWithMembers(ctx, fromUID, groupID, notifType, nil)
 }
 
-// sendGroupNotificationWithMembers is like sendGroupNotification but uses an
-// explicit member list when provided (members != nil). This avoids a round-trip
-// to the local GroupStore and is the preferred path when group membership is
-// managed externally (e.g. via gRPC Logic service). When members is nil, the
-// member list is fetched from the local GroupStore as a fallback.
+// sendGroupNotificationWithMembers 与 sendGroupNotification 类似,但当提供了
+// 显式成员列表时使用之(members != nil)。这避免了与本地 GroupStore 的
+// 往返,是群成员关系由外部管理(例如通过 gRPC Logic 服务)时的首选路径。
+// 当 members 为 nil 时,回退到从本地 GroupStore 获取成员列表。
 func (r *Router) sendGroupNotificationWithMembers(ctx context.Context, fromUID, groupID, notifType string, members []string) {
 	content, _ := json.Marshal(map[string]string{
 		"type":     notifType,
@@ -923,7 +919,7 @@ func (r *Router) sendGroupNotificationWithMembers(ctx context.Context, fromUID, 
 	}
 	sender := r.clients.Get(ctx, fromUID)
 	if sender == nil {
-		sender = &Client{UID: fromUID} // minimal client for self-skip in fanout
+		sender = &Client{UID: fromUID} // 最小客户端,用于扇出时跳过自己
 	}
 	if members != nil {
 		r.fanoutGroupWithMembers(ctx, sender, notif, members)
@@ -933,11 +929,11 @@ func (r *Router) sendGroupNotificationWithMembers(ctx context.Context, fromUID, 
 	r.persistAsync(ctx, notif)
 }
 
-// --- Group management handlers (implemented Phase 5) ---
+// --- 群管理处理器(Phase 5 实现)---
 
-// handleGroupCreate creates a new group. The sender becomes the owner and first member.
-// Request: Content = {"name": "My Group"}
-// Response: Content = {"id":"g_123","name":"My Group","owner_uid":"alice","members":["alice"],"created_at":123}
+// handleGroupCreate 创建新群。发送方成为群主和第一个成员。
+// 请求:Content = {"name": "My Group"}
+// 响应:Content = {"id":"g_123","name":"My Group","owner_uid":"alice","members":["alice"],"created_at":123}
 func (r *Router) handleGroupCreate(ctx context.Context, sender *Client, msg *proto.Message) {
 	var req struct {
 		Name    string   `json:"name"`
@@ -954,7 +950,7 @@ func (r *Router) handleGroupCreate(ctx context.Context, sender *Client, msg *pro
 		return
 	}
 
-	// Try gRPC Logic service first.
+	// 优先尝试 gRPC Logic 服务。
 	if r.logicClient != nil {
 		groupInfo, err := r.logicClient.CreateGroupClient(ctx, req.Name, sender.UID)
 		if err != nil {
@@ -962,7 +958,7 @@ func (r *Router) handleGroupCreate(ctx context.Context, sender *Client, msg *pro
 			return
 		}
 		if groupInfo != nil {
-			// Add initial members via gRPC (owner is already a member).
+			// 通过 gRPC 添加初始成员(群主已是成员)。
 			for _, memberUID := range req.Members {
 				if memberUID != "" && memberUID != sender.UID {
 					if joinErr := r.logicClient.JoinGroupClient(ctx, groupInfo.Id, memberUID); joinErr != nil {
@@ -985,7 +981,7 @@ func (r *Router) handleGroupCreate(ctx context.Context, sender *Client, msg *pro
 				Content:   string(data),
 				Timestamp: time.Now().UnixMilli(),
 			})
-			// Notify invited members (skip self).
+			// 通知被邀请的成员(跳过自己)。
 			joinedMembers := make([]string, 0)
 			for _, m := range req.Members {
 				if m != "" && m != sender.UID {
@@ -1000,7 +996,7 @@ func (r *Router) handleGroupCreate(ctx context.Context, sender *Client, msg *pro
 		}
 	}
 
-	// Fall back to local GroupStore.
+	// 回退到本地 GroupStore。
 	if r.groupStore == nil {
 		r.sendGroupError(sender, proto.CmdGroupCreate, "group chat not enabled")
 		return
@@ -1028,7 +1024,7 @@ func (r *Router) handleGroupCreate(ctx context.Context, sender *Client, msg *pro
 		Timestamp: time.Now().UnixMilli(),
 	})
 
-	// Notify invited members (skip self).
+	// 通知被邀请的成员(跳过自己)。
 	if len(req.Members) > 0 {
 		r.sendGroupNotificationWithMembers(ctx, sender.UID, group.ID, "member_joined", members)
 	}
@@ -1036,9 +1032,9 @@ func (r *Router) handleGroupCreate(ctx context.Context, sender *Client, msg *pro
 	log.Printf("[router] group created: id=%s name=%q owner=%s members=%d", group.ID, req.Name, sender.UID, len(members))
 }
 
-// handleGroupJoin adds the sender to a group.
-// Request: To = group_id, Content = optional (unused)
-// Response: Content = {"group_id":"g_123","uid":"bob","members":["alice","bob"]}
+// handleGroupJoin 将发送方加入群。
+// 请求:To = group_id,Content = 可选(未使用)
+// 响应:Content = {"group_id":"g_123","uid":"bob","members":["alice","bob"]}
 func (r *Router) handleGroupJoin(ctx context.Context, sender *Client, msg *proto.Message) {
 	groupID := msg.To
 	if groupID == "" {
@@ -1046,13 +1042,13 @@ func (r *Router) handleGroupJoin(ctx context.Context, sender *Client, msg *proto
 		return
 	}
 
-	// Try gRPC Logic service first.
+	// 优先尝试 gRPC Logic 服务。
 	if r.logicClient != nil {
 		if err := r.logicClient.JoinGroupClient(ctx, groupID, sender.UID); err != nil {
 			r.sendGroupError(sender, proto.CmdGroupJoin, err.Error())
 			return
 		}
-		// Fetch member list for the response.
+		// 获取成员列表用于响应。
 		groupInfo, _ := r.logicClient.GetGroupClient(ctx, groupID)
 		members := []string{}
 		if groupInfo != nil {
@@ -1069,14 +1065,14 @@ func (r *Router) handleGroupJoin(ctx context.Context, sender *Client, msg *proto
 			Content:   string(data),
 			Timestamp: time.Now().UnixMilli(),
 		})
-		// Use the member list from gRPC for notification fanout instead of writing
-		// to the local GroupStore — avoids double-write when groupStore is MySQL-backed.
+		// 使用 gRPC 返回的成员列表进行通知扇出,而不是写入
+		// 本地 GroupStore —— 避免 groupStore 基于 MySQL 时的双重写入。
 		r.sendGroupNotificationWithMembers(ctx, sender.UID, groupID, "member_joined", members)
 		log.Printf("[router] %s joined group %s via gRPC", sender.UID, groupID)
 		return
 	}
 
-	// Fall back to local GroupStore.
+	// 回退到本地 GroupStore。
 	if r.groupStore == nil {
 		r.sendGroupError(sender, proto.CmdGroupJoin, "group chat not enabled")
 		return
@@ -1101,15 +1097,15 @@ func (r *Router) handleGroupJoin(ctx context.Context, sender *Client, msg *proto
 		Timestamp: time.Now().UnixMilli(),
 	})
 
-	// Notify all group members about the new member.
+	// 通知所有群成员有新成员加入。
 	r.sendGroupNotification(ctx, sender.UID, groupID, "member_joined")
 
 	log.Printf("[router] %s joined group %s", sender.UID, groupID)
 }
 
-// handleGroupInviteMember invites a third-party user to a group. Only the group owner can invite.
-// Request: To = group_id, Content = {"target_uid":"bob"}
-// Response: Content = {"group_id":"g_123","target_uid":"bob","inviter_uid":"alice","members":[...]}
+// handleGroupInviteMember 邀请第三方用户入群。只有群主可以邀请。
+// 请求:To = group_id,Content = {"target_uid":"bob"}
+// 响应:Content = {"group_id":"g_123","target_uid":"bob","inviter_uid":"alice","members":[...]}
 func (r *Router) handleGroupInviteMember(ctx context.Context, sender *Client, msg *proto.Message) {
 	groupID := msg.To
 	if groupID == "" {
@@ -1117,7 +1113,7 @@ func (r *Router) handleGroupInviteMember(ctx context.Context, sender *Client, ms
 		return
 	}
 
-	// Parse target_uid from content.
+	// 从内容中解析 target_uid。
 	var req struct {
 		TargetUID string `json:"target_uid"`
 	}
@@ -1132,9 +1128,9 @@ func (r *Router) handleGroupInviteMember(ctx context.Context, sender *Client, ms
 		return
 	}
 
-	// Try gRPC Logic service first.
+	// 优先尝试 gRPC Logic 服务。
 	if r.logicClient != nil {
-		// Validate sender is the group owner.
+		// 校验发送方是群主。
 		groupInfo, err := r.logicClient.GetGroupClient(ctx, groupID)
 		if err != nil {
 			r.sendGroupError(sender, proto.CmdGroupInviteMember, err.Error())
@@ -1149,13 +1145,13 @@ func (r *Router) handleGroupInviteMember(ctx context.Context, sender *Client, ms
 			return
 		}
 
-		// Add the target user.
+		// 添加目标用户。
 		if err := r.logicClient.JoinGroupClient(ctx, groupID, targetUID); err != nil {
 			r.sendGroupError(sender, proto.CmdGroupInviteMember, err.Error())
 			return
 		}
 
-		// Fetch updated member list.
+		// 获取更新后的成员列表。
 		updatedGroup, _ := r.logicClient.GetGroupClient(ctx, groupID)
 		members := []string{}
 		if updatedGroup != nil {
@@ -1173,19 +1169,19 @@ func (r *Router) handleGroupInviteMember(ctx context.Context, sender *Client, ms
 			Content:   string(data),
 			Timestamp: time.Now().UnixMilli(),
 		})
-		// Notify all members about the new member.
+		// 通知所有成员有新成员加入。
 		r.sendGroupNotificationWithMembers(ctx, targetUID, groupID, "member_joined", members)
 		log.Printf("[router] %s invited %s to group %s via gRPC", sender.UID, targetUID, groupID)
 		return
 	}
 
-	// Fall back to local GroupStore.
+	// 回退到本地 GroupStore。
 	if r.groupStore == nil {
 		r.sendGroupError(sender, proto.CmdGroupInviteMember, "group chat not enabled")
 		return
 	}
 
-	// Validate sender is the group owner.
+	// 校验发送方是群主。
 	g, err := r.groupStore.Get(ctx, groupID)
 	if err != nil {
 		r.sendGroupError(sender, proto.CmdGroupInviteMember, err.Error())
@@ -1200,7 +1196,7 @@ func (r *Router) handleGroupInviteMember(ctx context.Context, sender *Client, ms
 		return
 	}
 
-	// Add the target user.
+	// 添加目标用户。
 	if err := r.groupStore.AddMember(ctx, groupID, targetUID); err != nil {
 		r.sendGroupError(sender, proto.CmdGroupInviteMember, err.Error())
 		return
@@ -1221,15 +1217,15 @@ func (r *Router) handleGroupInviteMember(ctx context.Context, sender *Client, ms
 		Timestamp: time.Now().UnixMilli(),
 	})
 
-	// Notify all group members about the new member.
+	// 通知所有群成员有新成员加入。
 	r.sendGroupNotification(ctx, targetUID, groupID, "member_joined")
 
 	log.Printf("[router] %s invited %s to group %s", sender.UID, targetUID, groupID)
 }
 
-// handleGroupLeave removes the sender from a group. If the group becomes empty, it is deleted.
-// Request: To = group_id
-// Response: Content = {"group_id":"g_123","uid":"bob","deleted":false}
+// handleGroupLeave 将发送方移出群。如果群变为空,则删除该群。
+// 请求:To = group_id
+// 响应:Content = {"group_id":"g_123","uid":"bob","deleted":false}
 func (r *Router) handleGroupLeave(ctx context.Context, sender *Client, msg *proto.Message) {
 	groupID := msg.To
 	if groupID == "" {
@@ -1237,7 +1233,7 @@ func (r *Router) handleGroupLeave(ctx context.Context, sender *Client, msg *prot
 		return
 	}
 
-	// Try gRPC Logic service first.
+	// 优先尝试 gRPC Logic 服务。
 	if r.logicClient != nil {
 		deleted, err := r.logicClient.LeaveGroupClient(ctx, groupID, sender.UID)
 		if err != nil {
@@ -1255,8 +1251,8 @@ func (r *Router) handleGroupLeave(ctx context.Context, sender *Client, msg *prot
 			Content:   string(data),
 			Timestamp: time.Now().UnixMilli(),
 		})
-		// Fetch remaining members from gRPC for notification fanout instead of
-		// writing to the local GroupStore — avoids double-write with MySQL-backed store.
+		// 从 gRPC 获取剩余成员用于通知扇出,而不是写入
+		// 本地 GroupStore —— 避免与基于 MySQL 的存储双重写入。
 		if !deleted {
 			groupInfo, _ := r.logicClient.GetGroupClient(ctx, groupID)
 			members := []string{}
@@ -1269,7 +1265,7 @@ func (r *Router) handleGroupLeave(ctx context.Context, sender *Client, msg *prot
 		return
 	}
 
-	// Fall back to local GroupStore.
+	// 回退到本地 GroupStore。
 	if r.groupStore == nil {
 		r.sendGroupError(sender, proto.CmdGroupLeave, "group chat not enabled")
 		return
@@ -1280,13 +1276,13 @@ func (r *Router) handleGroupLeave(ctx context.Context, sender *Client, msg *prot
 		return
 	}
 
-	// Check if the group still exists (it's deleted when the last member leaves).
+	// 检查群是否仍然存在(最后一名成员退出时群被删除)。
 	_, getErr := r.groupStore.Get(ctx, groupID)
 	wasDeleted := getErr != nil
 	data, _ := json.Marshal(map[string]interface{}{
 		"group_id": groupID,
 		"uid":      sender.UID,
-		"deleted":  wasDeleted, // true if group was deleted (last member left)
+		"deleted":  wasDeleted, // 群被删除时为 true(最后一名成员已退出)
 	})
 
 	sender.Send(&proto.Message{
@@ -1296,8 +1292,8 @@ func (r *Router) handleGroupLeave(ctx context.Context, sender *Client, msg *prot
 		Timestamp: time.Now().UnixMilli(),
 	})
 
-	// Notify remaining group members about the departure.
-	// Only send when the group still exists (has remaining members).
+	// 通知剩余群成员有人离开。
+	// 仅在群仍然存在(还有剩余成员)时发送。
 	if !wasDeleted {
 		r.sendGroupNotification(ctx, sender.UID, groupID, "member_left")
 	}
@@ -1305,9 +1301,9 @@ func (r *Router) handleGroupLeave(ctx context.Context, sender *Client, msg *prot
 	log.Printf("[router] %s left group %s", sender.UID, groupID)
 }
 
-// handleGroupInfo returns full group information including member list.
-// Request: To = group_id
-// Response: Content = {"id":"g_123","name":"My Group","owner_uid":"alice","members":["alice","bob"],"created_at":123}
+// handleGroupInfo 返回完整的群信息,包括成员列表。
+// 请求:To = group_id
+// 响应:Content = {"id":"g_123","name":"My Group","owner_uid":"alice","members":["alice","bob"],"created_at":123}
 func (r *Router) handleGroupInfo(ctx context.Context, sender *Client, msg *proto.Message) {
 	groupID := msg.To
 	if groupID == "" {
@@ -1315,7 +1311,7 @@ func (r *Router) handleGroupInfo(ctx context.Context, sender *Client, msg *proto
 		return
 	}
 
-	// Try gRPC Logic service first.
+	// 优先尝试 gRPC Logic 服务。
 	if r.logicClient != nil {
 		groupInfo, err := r.logicClient.GetGroupClient(ctx, groupID)
 		if err != nil {
@@ -1342,7 +1338,7 @@ func (r *Router) handleGroupInfo(ctx context.Context, sender *Client, msg *proto
 		return
 	}
 
-	// Fall back to local GroupStore.
+	// 回退到本地 GroupStore。
 	if r.groupStore == nil {
 		r.sendGroupError(sender, proto.CmdGroupInfo, "group chat not enabled")
 		return
@@ -1371,11 +1367,11 @@ func (r *Router) handleGroupInfo(ctx context.Context, sender *Client, msg *proto
 	})
 }
 
-// handleGroupList returns all groups the sender belongs to.
-// Request: no special fields
-// Response: Content = {"uid":"alice","groups":[{"id":"g_1","name":"...","owner_uid":"...","member_count":2,"created_at":123},...]}
+// handleGroupList 返回发送方所属的所有群。
+// 请求:无特殊字段
+// 响应:Content = {"uid":"alice","groups":[{"id":"g_1","name":"...","owner_uid":"...","member_count":2,"created_at":123},...]}
 func (r *Router) handleGroupList(ctx context.Context, sender *Client, msg *proto.Message) {
-	// Try gRPC Logic service first.
+	// 优先尝试 gRPC Logic 服务。
 	if r.logicClient != nil {
 		groupInfos, err := r.logicClient.ListGroupsClient(ctx, sender.UID)
 		if err != nil {
@@ -1413,7 +1409,7 @@ func (r *Router) handleGroupList(ctx context.Context, sender *Client, msg *proto
 		return
 	}
 
-	// Fall back to local GroupStore.
+	// 回退到本地 GroupStore。
 	if r.groupStore == nil {
 		r.sendGroupError(sender, proto.CmdGroupList, "group chat not enabled")
 		return
@@ -1459,7 +1455,7 @@ func (r *Router) handleGroupList(ctx context.Context, sender *Client, msg *proto
 	log.Printf("[router] group list for %s: %d groups", sender.UID, len(summaries))
 }
 
-// sendGroupError sends an error response for group management commands.
+// sendGroupError 为群管理命令发送错误响应。
 func (r *Router) sendGroupError(sender *Client, cmd int32, errMsg string) {
 	data, _ := json.Marshal(map[string]string{"error": errMsg})
 	sender.Send(&proto.Message{
@@ -1470,9 +1466,8 @@ func (r *Router) sendGroupError(sender *Client, cmd int32, errMsg string) {
 	})
 }
 
-// handleFriendRequest processes a friend request. The sender asks to add the
-// target (msg.To) as a friend. The Router persists the request and forwards
-// a notification to the target if they are online.
+// handleFriendRequest 处理好友请求。发送方请求将目标(msg.To)添加为好友。
+// Router 持久化该请求,并在目标在线时将通知转发给目标。
 func (r *Router) handleFriendRequest(ctx context.Context, sender *Client, msg *proto.Message) {
 	if r.friendStore == nil {
 		log.Printf("[router] friend request from %s dropped: friend store not available", sender.UID)
@@ -1486,7 +1481,7 @@ func (r *Router) handleFriendRequest(ctx context.Context, sender *Client, msg *p
 	}
 
 	if err := r.friendStore.SendRequest(ctx, sender.UID, msg.To); err != nil {
-		// Notify sender of the error
+		// 通知发送方错误信息
 		data, _ := json.Marshal(map[string]string{"error": err.Error()})
 		sender.Send(&proto.Message{
 			Cmd:       proto.CmdFriendRequest,
@@ -1501,7 +1496,7 @@ func (r *Router) handleFriendRequest(ctx context.Context, sender *Client, msg *p
 
 	log.Printf("[router] friend request: %s → %s", sender.UID, msg.To)
 
-	// Notify the target if online (local or cross-gateway).
+	// 如果目标在线(本地或跨网关)则通知它。
 	notify := &proto.Message{
 		Cmd:       proto.CmdFriendRequest,
 		MsgId:     r.snow.Next(),
@@ -1512,7 +1507,7 @@ func (r *Router) handleFriendRequest(ctx context.Context, sender *Client, msg *p
 	}
 	r.routeOrStoreOffline(ctx, msg.To, notify)
 
-	// ACK to sender
+	// 向发送方发送 ACK
 	sender.Send(&proto.Message{
 		Cmd:       proto.CmdFriendRequest,
 		MsgId:     r.snow.Next(),
@@ -1523,8 +1518,8 @@ func (r *Router) handleFriendRequest(ctx context.Context, sender *Client, msg *p
 	})
 }
 
-// handleFriendResponse processes a response to a friend request (accept or reject).
-// The response status is in msg.Content as JSON: {"action":"accept"} or {"action":"reject"}.
+// handleFriendResponse 处理好友请求的响应(接受或拒绝)。
+// 响应状态在 msg.Content 中,为 JSON:{"action":"accept"} 或 {"action":"reject"}。
 func (r *Router) handleFriendResponse(ctx context.Context, sender *Client, msg *proto.Message) {
 	if r.friendStore == nil {
 		log.Printf("[router] friend response from %s dropped: friend store not available", sender.UID)
@@ -1532,18 +1527,18 @@ func (r *Router) handleFriendResponse(ctx context.Context, sender *Client, msg *
 	}
 	msg.From = sender.UID
 
-	// Parse action from content.
+	// 从内容中解析动作。
 	var payload struct {
 		Action string `json:"action"`
 	}
-	action := "accept" // default
+	action := "accept" // 默认值
 	if msg.Content != "" {
 		if err := json.Unmarshal([]byte(msg.Content), &payload); err == nil && payload.Action != "" {
 			action = payload.Action
 		}
 	}
 
-	targetUID := msg.To // the original requester
+	targetUID := msg.To // 原始请求者
 	if targetUID == "" || targetUID == sender.UID {
 		log.Printf("[router] friend response from %s dropped: invalid target", sender.UID)
 		return
@@ -1566,7 +1561,7 @@ func (r *Router) handleFriendResponse(ctx context.Context, sender *Client, msg *
 
 	log.Printf("[router] friend response: %s %s request from %s", sender.UID, action, targetUID)
 
-	// Notify the original requester.
+	// 通知原始请求者。
 	notify := &proto.Message{
 		Cmd:       proto.CmdFriendResponse,
 		MsgId:     r.snow.Next(),
@@ -1578,17 +1573,17 @@ func (r *Router) handleFriendResponse(ctx context.Context, sender *Client, msg *
 	r.routeOrStoreOffline(ctx, targetUID, notify)
 }
 
-// handleTyping forwards a typing indicator to the target user or group members.
-// Typing events are ephemeral — they are never persisted and only forwarded to online peers.
+// handleTyping 将正在输入的状态转发给目标用户或群成员。
+// 输入事件是临时的 —— 它们从不持久化,只转发给在线对端。
 func (r *Router) handleTyping(ctx context.Context, sender *Client, msg *proto.Message) {
 	if msg.To == "" || msg.To == sender.UID {
 		return
 	}
 
-	// Overwrite From with authenticated sender.
+	// 用已认证的发送方覆盖 From 字段。
 	msg.From = sender.UID
 
-	// Single chat: forward to the target.
+	// 单聊:转发给目标。
 	if msg.ChatType != proto.ChatTypeGroup || r.groupStore == nil {
 		target := r.clients.Get(ctx, msg.To)
 		if target != nil {
@@ -1597,7 +1592,7 @@ func (r *Router) handleTyping(ctx context.Context, sender *Client, msg *proto.Me
 		return
 	}
 
-	// Group chat: fan out to all online members except sender.
+	// 群聊:扇出给除发送方外的所有在线成员。
 	members, err := r.groupStore.GetMembers(ctx, msg.To)
 	if err != nil {
 		return
@@ -1613,9 +1608,9 @@ func (r *Router) handleTyping(ctx context.Context, sender *Client, msg *proto.Me
 	}
 }
 
-// handleForward forwards a message to another conversation. The sender
-// provides the message to forward (in msg.Content) and the target in msg.To.
-// A new MsgID is assigned so the forwarded message is distinct.
+// handleForward 将消息转发到另一个会话。发送方在 msg.Content 中
+// 提供要转发的消息,在 msg.To 中提供目标。
+// 会分配新的 MsgID,使转发后的消息互不相同。
 func (r *Router) handleForward(ctx context.Context, sender *Client, msg *proto.Message) {
 	if err := msg.Validate(); err != nil {
 		log.Printf("[router] forward from %s invalid: %v", sender.UID, err)
@@ -1630,14 +1625,14 @@ func (r *Router) handleForward(ctx context.Context, sender *Client, msg *proto.M
 		return
 	}
 
-	// Overwrite From with authenticated sender (security).
+	// 用已认证的发送方覆盖 From(安全)。
 	msg.From = sender.UID
 
-	// Assign a new MsgID and timestamp.
+	// 分配新的 MsgID 和时间戳。
 	msg.MsgId = r.snow.Next()
 	msg.Timestamp = time.Now().UnixMilli()
 
-	// Deliver to the target(s) — same pipeline as handleChat.
+	// 投递给目标 —— 与 handleChat 相同的处理流程。
 	if msg.ChatType == proto.ChatTypeGroup && r.groupStore != nil {
 		r.fanoutGroup(ctx, sender, msg)
 	} else {
@@ -1652,7 +1647,7 @@ func (r *Router) handleForward(ctx context.Context, sender *Client, msg *proto.M
 		}
 	}
 
-	// Increment unread for target(s).
+	// 增加目标的未读计数。
 	if r.unreadTracker != nil {
 		if msg.ChatType == proto.ChatTypeGroup && r.groupStore != nil {
 			members, err := r.groupStore.GetMembers(ctx, msg.To)
@@ -1668,7 +1663,7 @@ func (r *Router) handleForward(ctx context.Context, sender *Client, msg *proto.M
 		}
 	}
 
-	// ACK the forward request.
+	// 对转发请求发送 ACK。
 	if msg.NeedAck {
 		ack := &proto.Message{
 			Cmd:       proto.CmdAck,
@@ -1680,15 +1675,15 @@ func (r *Router) handleForward(ctx context.Context, sender *Client, msg *proto.M
 		sender.Send(ack)
 	}
 
-	// Persist the forwarded message asynchronously.
+	// 异步持久化转发的消息。
 	r.persistAsync(ctx, msg)
 
 	log.Printf("[router] forward from %s to %s (new msgId=%d)", sender.UID, msg.To, msg.MsgId)
 }
 
-// handleEdit processes a message edit request. The sender asks to edit a
-// previously sent message. Seq carries the original message's MsgID.
-// The edit notification is forwarded to the target peer.
+// handleEdit 处理消息编辑请求。发送方请求编辑一条已发送的消息。
+// Seq 携带原消息的 MsgID。
+// 编辑通知会转发给目标对端。
 func (r *Router) handleEdit(ctx context.Context, sender *Client, msg *proto.Message) {
 	if err := msg.Validate(); err != nil {
 		log.Printf("[router] edit from %s invalid: %v", sender.UID, err)
@@ -1714,17 +1709,17 @@ func (r *Router) handleEdit(ctx context.Context, sender *Client, msg *proto.Mess
 		return
 	}
 
-	// Overwrite From with authenticated sender.
+	// 用已认证的发送方覆盖 From 字段。
 	msg.From = sender.UID
 
-	// Record the original MsgID before overwriting Seq.
+	// 在覆盖 Seq 之前记录原始 MsgID。
 	originalMsgID := msg.Seq
 
-	// Assign a new MsgID for the edit notification.
+	// 为编辑通知分配新的 MsgID。
 	msg.MsgId = r.snow.Next()
 	msg.Timestamp = time.Now().UnixMilli()
 
-	// Build the edit notification for the target peer.
+	// 为对端构建编辑通知。
 	editContent, _ := json.Marshal(map[string]interface{}{
 		"edited":   true,
 		"msg_id":   originalMsgID,
@@ -1732,7 +1727,7 @@ func (r *Router) handleEdit(ctx context.Context, sender *Client, msg *proto.Mess
 	})
 	msg.Content = string(editContent)
 
-	// Try local delivery of the edit notification.
+	// 尝试本地投递编辑通知。
 	if msg.ChatType == proto.ChatTypeGroup && r.groupStore != nil {
 		r.fanoutGroup(ctx, sender, msg)
 	} else {
@@ -1747,15 +1742,15 @@ func (r *Router) handleEdit(ctx context.Context, sender *Client, msg *proto.Mess
 		}
 	}
 
-	// Persist the edit: update content in MySQL if available.
-	// Ownership is verified against the original message's from_uid.
+	// 持久化编辑:可用时更新 MySQL 中的内容。
+	// 所有权会根据原消息的 from_uid 进行校验。
 	if r.msgStore != nil {
 		if err := r.msgStore.UpdateMessageContent(ctx, originalMsgID, sender.UID, msg.Content); err != nil {
 			log.Printf("[router] edit persist error for msg=%d: %v", originalMsgID, err)
 		}
 	}
 
-	// No ACK for edit — the edit notification itself is the confirmation.
+	// 编辑无 ACK —— 编辑通知本身就是确认。
 
 	log.Printf("[router] edit from %s for msg=%d sent to %s", sender.UID, originalMsgID, msg.To)
 }

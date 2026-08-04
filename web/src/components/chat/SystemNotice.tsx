@@ -6,7 +6,7 @@ interface SystemNoticeProps {
   notification: GroupNotification;
 }
 
-/** Render a rich system notice from message content JSON */
+/** 从消息内容 JSON 渲染富文本系统通知 */
 export function renderSystemNotice(content: string): ReactNode {
   const parsed = tryParseJSON<{ type?: string; uid?: string; name?: string; from_uid?: string; username?: string }>(content);
   if (!parsed) return null;

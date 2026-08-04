@@ -4,19 +4,19 @@ import { wsManager } from '@/lib/ws';
 import { changePassword } from '@/lib/api';
 import { User, Moon, Sun, Key, Shield, Info, LogOut, Check, X } from 'lucide-react';
 
-/** Simple dark mode toggle using CSS class on <html>.
- *  On mount, reads localStorage (or OS preference as fallback) to match the
- *  anti-flash init script in index.html. */
+/** 基于 <html> 上的 CSS class 实现的简单暗色模式切换。
+ *  挂载时读取 localStorage(或回退到系统偏好),与
+ *  index.html 中的防闪烁初始化脚本保持一致。 */
 function useDarkMode() {
   const [dark, setDark] = useState(() => {
     if (typeof document === 'undefined') return false;
     const cls = document.documentElement.classList.contains('dark');
-    // Match the init-script logic: if no stored preference, respect OS.
+    // 与初始化脚本逻辑一致:若无存储的偏好,则遵循系统设置。
     try {
       const stored = localStorage.getItem('im-dark-mode');
       if (stored === '1') return true;
       if (stored === '0') return false;
-    } catch { /* ignore */ }
+    } catch { /* 忽略 */ }
     return cls || window.matchMedia('(prefers-color-scheme: dark)').matches;
   });
   const toggle = () => {
@@ -25,7 +25,7 @@ function useDarkMode() {
     document.documentElement.classList.toggle('dark', next);
     try {
       localStorage.setItem('im-dark-mode', next ? '1' : '0');
-    } catch { /* ignore */ }
+    } catch { /* 忽略 */ }
   };
   return { dark, toggle };
 }
@@ -81,13 +81,13 @@ export default function SettingsPage() {
   return (
     <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-950">
       <div className="max-w-2xl mx-auto p-6 space-y-6">
-        {/* Header */}
+        {/* 头部 */}
         <div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">设置</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">管理您的账户和应用偏好</p>
         </div>
 
-        {/* Profile Section */}
+        {/* 个人信息区块 */}
         <section className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800 dark:border-gray-800">
             <div className="flex items-center gap-2">
@@ -113,7 +113,7 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* Appearance Section */}
+        {/* 外观区块 */}
         <section className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
             <div className="flex items-center gap-2">
@@ -143,7 +143,7 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* Security Section */}
+        {/* 安全区块 */}
         <section className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
             <div className="flex items-center gap-2">
@@ -234,7 +234,7 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* About Section */}
+        {/* 关于区块 */}
         <section className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
             <div className="flex items-center gap-2">
@@ -258,7 +258,7 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* Logout */}
+        {/* 退出登录 */}
         <section className="bg-white dark:bg-gray-900 rounded-xl border border-red-100 dark:border-red-900 overflow-hidden">
           <div className="p-5">
             <button

@@ -18,7 +18,7 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-full">
-      {/* Conversation sidebar */}
+      {/* 会话侧边栏 */}
       <div className="w-72 lg:w-80 border-r border-gray-200 dark:border-gray-800 flex-shrink-0 hidden md:flex flex-col">
         <div className="h-14 px-4 flex items-center border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex-shrink-0">
           <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">消息</h2>
@@ -26,7 +26,7 @@ export default function ChatPage() {
         <ConversationList />
       </div>
 
-      {/* Chat window or placeholder */}
+      {/* 聊天窗口或占位 */}
       <div className="flex-1 flex flex-col min-w-0">
         {activePeer ? (
           <ChatWindow peerId={activePeer} />

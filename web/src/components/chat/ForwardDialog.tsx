@@ -13,7 +13,7 @@ export default function ForwardDialog({ message, onForward, onClose }: ForwardDi
   const conversations = useChatStore((s) => s.getConversationList());
   const [search, setSearch] = useState('');
 
-  // Filter conversations: exclude the current conversation, filter by search text
+  // 过滤会话:排除当前会话,按搜索文本过滤
   const filtered = conversations.filter((conv) => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
@@ -30,7 +30,7 @@ export default function ForwardDialog({ message, onForward, onClose }: ForwardDi
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-white rounded-xl shadow-2xl w-96 max-h-[80vh] flex flex-col">
-        {/* Header */}
+        {/* 头部 */}
         <div className="h-12 px-4 flex items-center justify-between border-b border-gray-100 flex-shrink-0">
           <h3 className="text-sm font-semibold text-gray-900">转发消息</h3>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100">
@@ -38,13 +38,13 @@ export default function ForwardDialog({ message, onForward, onClose }: ForwardDi
           </button>
         </div>
 
-        {/* Preview */}
+        {/* 预览 */}
         <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 text-sm text-gray-600">
           <span className="text-xs text-gray-400">转发来自 {message.from} 的消息：</span>
           <p className="mt-1 text-gray-700 line-clamp-2">{previewText}</p>
         </div>
 
-        {/* Search */}
+        {/* 搜索 */}
         <div className="px-4 py-2 border-b border-gray-100">
           <input
             type="text"
@@ -55,7 +55,7 @@ export default function ForwardDialog({ message, onForward, onClose }: ForwardDi
           />
         </div>
 
-        {/* Conversation list */}
+        {/* 会话列表 */}
         <div className="flex-1 overflow-y-auto p-2">
           {filtered.length === 0 ? (
             <p className="text-center text-sm text-gray-400 py-8">暂无会话</p>

@@ -11,29 +11,29 @@ import (
 	pb "google.golang.org/protobuf/proto"
 )
 
-// Sentinel errors returned by Client.Send.
+// Client.Send 返回的哨兵错误。
 var (
 	ErrSendBufferFull = errors.New("send buffer full")
 	ErrClientClosed   = errors.New("client closed")
 )
 
-// Client represents a single connection (WebSocket or raw TCP via gnet).
+// Client 表示单个连接(经 gnet 的 WebSocket 或原始 TCP)。
 type Client struct {
 	UID      string
 	Username string
 
 	transport Transport
 	clients   ClientRegistry
-	send      chan []byte // buffered channel of outbound messages
+	send      chan []byte // 出站消息的缓冲通道
 	closed    chan struct{}
 	closeOnce sync.Once
 
-	// Application-level heartbeat tracking (used by both transports).
+	// 应用层心跳跟踪(两种传输方式共用)。
 	lastHeartbeat time.Time
 	heartbeatMu   sync.Mutex
 }
 
-// NewClient creates a Client with a Transport and registers it.
+// NewClient 用 Transport 创建 Client 并注册它。
 func NewClient(uid, username string, transport Transport, clients ClientRegistry, sendBufSize int) *Client {
 	return &Client{
 		UID:           uid,
@@ -46,22 +46,22 @@ func NewClient(uid, username string, transport Transport, clients ClientRegistry
 	}
 }
 
-// Heartbeat returns the last application-level heartbeat time.
+// Heartbeat 返回最后一次应用层心跳的时间。
 func (c *Client) Heartbeat() time.Time {
 	c.heartbeatMu.Lock()
 	defer c.heartbeatMu.Unlock()
 	return c.lastHeartbeat
 }
 
-// SetHeartbeat updates the heartbeat timestamp to now.
+// SetHeartbeat 将心跳时间戳更新为当前时间。
 func (c *Client) SetHeartbeat(t time.Time) {
 	c.heartbeatMu.Lock()
 	defer c.heartbeatMu.Unlock()
 	c.lastHeartbeat = t
 }
 
-// Send pushes a serialized protobuf message to the outbound channel.
-// Returns an error if the buffer is full or the client has closed.
+// Send 将序列化后的 protobuf 消息推送到出站通道。
+// 如果缓冲区已满或客户端已关闭,则返回错误。
 func (c *Client) Send(msg *proto.Message) error {
 	data, err := pb.Marshal(msg)
 	if err != nil {
@@ -77,7 +77,7 @@ func (c *Client) Send(msg *proto.Message) error {
 	}
 }
 
-// Close shuts down the client connection and signals the write loop.
+// Close 关闭客户端连接并通知写循环退出。
 func (c *Client) Close() {
 	c.closeOnce.Do(func() {
 		close(c.closed)
@@ -85,8 +85,8 @@ func (c *Client) Close() {
 	})
 }
 
-// WriteLoop drains the send channel and writes to the transport.
-// This goroutine replaces the old writePump — it is transport-agnostic.
+// WriteLoop 排空 send 通道并写入 transport。
+// 该 goroutine 取代了旧的 writePump —— 与传输方式无关。
 func (c *Client) WriteLoop() {
 	for {
 		select {
@@ -104,8 +104,8 @@ func (c *Client) WriteLoop() {
 	}
 }
 
-// readPump is removed — WebSocket-specific readPump lives in server_ws.go.
-// gnet's React callback replaces readPump for TCP connections.
+// readPump 已移除 —— WebSocket 专用的 readPump 位于 server_ws.go。
+// gnet 的 React 回调替代了 TCP 连接的 readPump。
 
-// writePump is removed — WriteLoop replaces it for both transports.
-// WebSocket ping/pong logic lives in wsPingLoop (server_ws.go).
+// writePump 已移除 —— 两种传输方式均由 WriteLoop 取代。
+// WebSocket 的 ping/pong 逻辑位于 wsPingLoop(server_ws.go)。

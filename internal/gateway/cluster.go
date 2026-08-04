@@ -12,54 +12,53 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-// ClusterManager handles dynamic multi-gateway clustering: health checking peers
-// and (optionally) discovering them via Redis. It keeps the hash ring and
-// forwarder in sync with the current set of healthy, reachable peers.
+// ClusterManager 处理动态多网关集群:健康检查对端节点,并(可选地)通过 Redis
+// 发现它们。它让哈希环和转发器与当前健康、可达的对端集合保持同步。
 //
-// Two modes are supported:
-//   - Static: peers come from config (peer_addrs). Health checks still run and
-//     unhealthy peers are temporarily removed from the hash ring.
-//   - Redis discovery: peers are discovered via Redis keys with TTL-based
-//     heartbeat. New peers are added automatically; expired peers are removed.
+// 支持两种模式:
+//   - 静态:对端来自配置(peer_addrs)。健康检查仍然运行,不健康的对端会
+//     暂时从哈希环中移除。
+//   - Redis 发现:对端通过带 TTL 心跳的 Redis 键被发现。新对端自动加入;
+//     过期的对端被移除。
 type ClusterManager struct {
 	hr        *HashRing
 	forwarder *GrpcForwarder
 	thisNode  string
 	thisAddr  string
 
-	// Redis discovery (nil when disabled).
+	// Redis 服务发现(禁用时为 nil)。
 	redis       *redis.Client
-	redisPrefix string // default "im:gateway:node:"
+	redisPrefix string // 默认为 "im:gateway:node:"
 	ttl         time.Duration
 
-	// Health checking.
+	// 健康检查。
 	healthInterval time.Duration
 	probeTimeout   time.Duration
 
-	// Lifecycle.
+	// 生命周期。
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
-	// Track which peers are currently in the hash ring (healthy).
+	// 跟踪当前在哈希环中的对端(健康状态)。
 	mu          sync.RWMutex
-	peerHealth  map[string]bool // nodeID → currently healthy (in hash ring)
+	peerHealth  map[string]bool // nodeID → 当前是否健康(在哈希环中)
 }
 
-// ClusterConfig holds settings for the ClusterManager.
+// ClusterConfig 保存 ClusterManager 的设置。
 type ClusterConfig struct {
 	ThisNodeID     string
 	ThisAddr       string
-	HealthInterval time.Duration // 0 defaults to 5s
-	ProbeTimeout   time.Duration // 0 defaults to 2s
+	HealthInterval time.Duration // 0 表示默认为 5s
+	ProbeTimeout   time.Duration // 0 表示默认为 2s
 
-	// Redis discovery. Leave Redis nil to use static peer_addrs only.
+	// Redis 服务发现。将 Redis 留空(nil)则仅使用静态 peer_addrs。
 	Redis       *redis.Client
-	RedisPrefix string        // 0 defaults to "im:gateway:node:"
-	TTL         time.Duration // 0 defaults to 15s
+	RedisPrefix string        // 空串默认为 "im:gateway:node:"
+	TTL         time.Duration // 0 表示默认为 15s
 }
 
-// NewClusterManager creates a ClusterManager.
+// NewClusterManager 创建一个 ClusterManager。
 func NewClusterManager(hr *HashRing, forwarder *GrpcForwarder, cfg ClusterConfig) *ClusterManager {
 	if cfg.HealthInterval <= 0 {
 		cfg.HealthInterval = 5 * time.Second
@@ -88,10 +87,9 @@ func NewClusterManager(hr *HashRing, forwarder *GrpcForwarder, cfg ClusterConfig
 	}
 }
 
-// Start begins the background loops for health checking and (when Redis is
-// configured) service discovery. It blocks only long enough to register in
-// Redis and perform the initial peer discovery.
-// Safe to call only once; subsequent calls are no-ops to prevent context leaks.
+// Start 启动健康检查以及(配置了 Redis 时)服务发现的后台循环。
+// 它只阻塞到在 Redis 中完成注册并执行完初始对端发现。
+// 只能调用一次;后续调用为无操作,以防 context 泄漏。
 func (cm *ClusterManager) Start(ctx context.Context) {
 	if cm.cancel != nil {
 		log.Printf("[cluster] Start called but manager is already running — ignored")
@@ -99,7 +97,7 @@ func (cm *ClusterManager) Start(ctx context.Context) {
 	}
 	cm.ctx, cm.cancel = context.WithCancel(ctx)
 
-	// Mark all initial peers as healthy (they were added to the ring at startup).
+	// 将所有初始对端标记为健康(它们在启动时已加入哈希环)。
 	for nodeID := range cm.forwarder.PeerAddrs() {
 		if nodeID != cm.thisNode {
 			cm.mu.Lock()
@@ -109,7 +107,7 @@ func (cm *ClusterManager) Start(ctx context.Context) {
 	}
 
 	if cm.redis != nil {
-		// Register this node and discover initial peers.
+		// 在 Redis 中注册本节点并发现初始对端。
 		cm.registerSelf()
 		cm.discoverPeers()
 
@@ -125,14 +123,14 @@ func (cm *ClusterManager) Start(ctx context.Context) {
 		cm.thisNode, cm.thisAddr, len(cm.forwarder.PeerAddrs()), cm.redis != nil)
 }
 
-// Stop gracefully shuts down background loops and deregisters from Redis.
+// Stop 优雅地关闭后台循环并从 Redis 注销。
 func (cm *ClusterManager) Stop() {
 	if cm.cancel != nil {
 		cm.cancel()
 	}
 
-	// Deregister from Redis so peers stop routing to us.
-	// Use a short timeout to avoid blocking graceful shutdown.
+	// 从 Redis 注销,让对端不再路由消息到本节点。
+	// 使用短超时,避免阻塞优雅关闭。
 	if cm.redis != nil {
 		key := cm.redisPrefix + cm.thisNode
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -147,15 +145,15 @@ func (cm *ClusterManager) Stop() {
 }
 
 // ---------------------------------------------------------------------------
-// Redis service discovery
+// Redis 服务发现
 // ---------------------------------------------------------------------------
 
-// nodeKey returns the Redis key for a given node ID.
+// nodeKey 返回给定节点 ID 对应的 Redis 键。
 func (cm *ClusterManager) nodeKey(nodeID string) string {
 	return cm.redisPrefix + nodeID
 }
 
-// registerSelf registers this Gateway node in Redis with a TTL.
+// registerSelf 在 Redis 中注册本 Gateway 节点并附带 TTL。
 func (cm *ClusterManager) registerSelf() {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -168,11 +166,11 @@ func (cm *ClusterManager) registerSelf() {
 	log.Printf("[cluster] registered self in Redis: key=%s addr=%s ttl=%s", key, cm.thisAddr, cm.ttl)
 }
 
-// refreshLoop periodically refreshes this node's TTL in Redis.
+// refreshLoop 定期刷新本节点在 Redis 中的 TTL。
 func (cm *ClusterManager) refreshLoop() {
 	defer cm.wg.Done()
 
-	// Refresh at TTL/3 to have a healthy margin before expiry.
+	// 按 TTL/3 的间隔刷新,在过期前留出充足余量。
 	interval := cm.ttl / 3
 	if interval < 2*time.Second {
 		interval = 2 * time.Second
@@ -191,8 +189,8 @@ func (cm *ClusterManager) refreshLoop() {
 	}
 }
 
-// discoverPeers scans Redis for all registered Gateway nodes and reconciles
-// the set of local peers: new nodes are added, missing nodes are removed.
+// discoverPeers 扫描 Redis 中所有已注册的 Gateway 节点,并协调本地对端集合:
+// 新节点被加入,缺失的节点被移除。
 func (cm *ClusterManager) discoverPeers() {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -204,7 +202,7 @@ func (cm *ClusterManager) discoverPeers() {
 		return
 	}
 
-	found := make(map[string]string, len(keys)) // nodeID → addr
+	found := make(map[string]string, len(keys)) // nodeID → 地址
 	for _, key := range keys {
 		nodeID := key[len(cm.redisPrefix):]
 		if nodeID == "" {
@@ -212,7 +210,7 @@ func (cm *ClusterManager) discoverPeers() {
 		}
 		addr, err := cm.redis.Get(ctx, key).Result()
 		if err != nil {
-			continue // key expired between SCAN and GET
+			continue // 键在 SCAN 与 GET 之间已过期
 		}
 		found[nodeID] = addr
 	}
@@ -220,11 +218,11 @@ func (cm *ClusterManager) discoverPeers() {
 	cm.reconcilePeers(found)
 }
 
-// reconcilePeers adds new peers and removes stale ones.
+// reconcilePeers 添加新对端并移除过期对端。
 func (cm *ClusterManager) reconcilePeers(found map[string]string) {
 	currentPeers := cm.forwarder.PeerAddrs()
 
-	// Add new peers (and re-add peers that were removed but are back).
+	// 添加新对端(并重新添加曾被移除、现已恢复的对端)。
 	for nodeID, addr := range found {
 		if nodeID == cm.thisNode {
 			continue
@@ -233,13 +231,13 @@ func (cm *ClusterManager) reconcilePeers(found map[string]string) {
 			log.Printf("[cluster] discovered new peer: %s at %s", nodeID, addr)
 			cm.addPeer(nodeID, addr)
 		} else if currentPeers[nodeID] != addr {
-			// Address changed — update.
+			// 地址已变更 —— 更新。
 			log.Printf("[cluster] peer %s address changed: %s → %s", nodeID, currentPeers[nodeID], addr)
 			cm.addPeer(nodeID, addr)
 		}
 	}
 
-	// Remove peers that disappeared from Redis.
+	// 移除已从 Redis 消失的对端。
 	for nodeID := range currentPeers {
 		if _, exists := found[nodeID]; !exists {
 			log.Printf("[cluster] peer %s removed from Redis, removing locally", nodeID)
@@ -248,7 +246,7 @@ func (cm *ClusterManager) reconcilePeers(found map[string]string) {
 	}
 }
 
-// discoveryLoop periodically scans Redis for peer changes.
+// discoveryLoop 定期扫描 Redis 以发现对端变化。
 func (cm *ClusterManager) discoveryLoop() {
 	defer cm.wg.Done()
 
@@ -271,12 +269,11 @@ func (cm *ClusterManager) discoveryLoop() {
 }
 
 // ---------------------------------------------------------------------------
-// Health checking
+// 健康检查
 // ---------------------------------------------------------------------------
 
-// healthCheckLoop periodically probes every known peer and updates the hash
-// ring accordingly: unhealthy peers are temporarily removed, healthy peers are
-// added back.
+// healthCheckLoop 定期探测每个已知对端并相应地更新哈希环:
+// 不健康的对端被暂时移除,健康的对端被重新加入。
 func (cm *ClusterManager) healthCheckLoop() {
 	defer cm.wg.Done()
 
@@ -293,7 +290,7 @@ func (cm *ClusterManager) healthCheckLoop() {
 	}
 }
 
-// runHealthCheck probes all peers (except self) and reconciles the hash ring.
+// runHealthCheck 探测所有对端(除自身外)并协调哈希环。
 func (cm *ClusterManager) runHealthCheck() {
 	currentPeers := cm.forwarder.PeerAddrs()
 
@@ -324,10 +321,10 @@ func (cm *ClusterManager) runHealthCheck() {
 	}
 }
 
-// probePeer attempts a gRPC dial to the peer with a short timeout.
-// Returns true if the peer is reachable.
+// probePeer 尝试以短超时向对端发起 gRPC 拨号。
+// 如果对端可达则返回 true。
 func (cm *ClusterManager) probePeer(addr string) bool {
-	// Create a sub-context so we can wait for the connection after dialing.
+	// 创建子 context,以便拨号后可以等待连接就绪。
 	ctx, cancel := context.WithTimeout(context.Background(), cm.probeTimeout)
 	defer cancel()
 
@@ -339,12 +336,12 @@ func (cm *ClusterManager) probePeer(addr string) bool {
 	}
 	defer conn.Close()
 
-	// Kick off the connection and wait for it to become ready.
+	// 发起连接并等待其变为就绪状态。
 	conn.Connect()
 	state := conn.GetState()
 	for state != connectivity.Ready {
 		if !conn.WaitForStateChange(ctx, state) {
-			return false // context expired or connection shut down
+			return false // context 过期或连接已关闭
 		}
 		state = conn.GetState()
 	}
@@ -352,10 +349,10 @@ func (cm *ClusterManager) probePeer(addr string) bool {
 }
 
 // ---------------------------------------------------------------------------
-// Peer management
+// 对端管理
 // ---------------------------------------------------------------------------
 
-// addPeer adds a peer to both the forwarder's address map and the hash ring.
+// addPeer 将对端同时加入转发器的地址映射和哈希环。
 func (cm *ClusterManager) addPeer(nodeID, addr string) {
 	cm.forwarder.AddPeer(nodeID, addr)
 	cm.hr.Add(nodeID)
@@ -364,7 +361,7 @@ func (cm *ClusterManager) addPeer(nodeID, addr string) {
 	cm.mu.Unlock()
 }
 
-// removePeer removes a peer from the hash ring, the forwarder, and local tracking.
+// removePeer 从哈希环、转发器及本地跟踪中移除对端。
 func (cm *ClusterManager) removePeer(nodeID string) {
 	cm.hr.Remove(nodeID)
 	cm.forwarder.RemovePeer(nodeID)
@@ -373,7 +370,7 @@ func (cm *ClusterManager) removePeer(nodeID string) {
 	cm.mu.Unlock()
 }
 
-// HealthyPeers returns the number of peers currently marked healthy (in the ring).
+// HealthyPeers 返回当前标记为健康(在环中)的对端数量。
 func (cm *ClusterManager) HealthyPeers() int {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()

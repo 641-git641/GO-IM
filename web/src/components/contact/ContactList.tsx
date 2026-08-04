@@ -16,7 +16,7 @@ export default function ContactList() {
   const [processingUid, setProcessingUid] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  // Load friend data
+  // 加载好友数据
   useEffect(() => {
     if (!uid) return;
     getFriendList()
@@ -34,7 +34,7 @@ export default function ContactList() {
       await acceptFriendRequest(fromUid);
       addFriend({ uid: fromUid, friend_uid: uid, status: 1, created_at: Date.now() });
       removePendingRequest(fromUid);
-      // Notify via WebSocket.
+      // 通过 WebSocket 通知。
       wsManager.send({
         seq: '0',
         msgId: '0',
@@ -48,7 +48,7 @@ export default function ContactList() {
         needAck: false,
       });
     } catch {
-      // ignore
+      // 忽略
     } finally {
       setProcessingUid(null);
     }
@@ -61,14 +61,14 @@ export default function ContactList() {
       await rejectFriendRequest(fromUid);
       removePendingRequest(fromUid);
     } catch {
-      // ignore
+      // 忽略
     } finally {
       setProcessingUid(null);
     }
   };
   return (
     <div className="flex-1 overflow-y-auto">
-      {/* Pending requests section */}
+      {/* 待处理请求区块 */}
       {pendingRequests.length > 0 && (
         <div>
           <div className="px-4 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-800 sticky top-0">
@@ -107,7 +107,7 @@ export default function ContactList() {
         </div>
       )}
 
-      {/* Friends section */}
+      {/* 好友区块 */}
       {friends.length > 0 && (
         <div>
           <div className="px-4 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-800 sticky top-0">
@@ -125,7 +125,7 @@ export default function ContactList() {
         </div>
       )}
 
-      {/* Groups section */}
+      {/* 群组区块 */}
       {groups.length > 0 && (
         <div>
           <div className="px-4 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-800 sticky top-0">

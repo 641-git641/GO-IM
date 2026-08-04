@@ -8,10 +8,9 @@ import (
 	"github.com/im/api/proto"
 )
 
-// newTestClient creates a Client for unit testing hub operations.
-// The returned client has a nil Transport — only safe for tests
-// that do not call Close(). Tests requiring Close() (e.g. duplicate
-// register with kick) are covered by integration tests.
+// newTestClient 创建用于单元测试 hub 操作的 Client。
+// 返回的客户端 Transport 为 nil —— 仅对不调用 Close() 的测试安全。
+// 需要 Close() 的测试（例如重复注册踢下线）由集成测试覆盖。
 func newTestClient(t *testing.T, uid, username string) *Client {
 	t.Helper()
 	return &Client{
@@ -23,7 +22,7 @@ func newTestClient(t *testing.T, uid, username string) *Client {
 	}
 }
 
-// ---------- Map operations ----------
+// ---------- 映射操作 ----------
 
 func TestRegisterAndGet(t *testing.T) {
 	h := NewHub(100)
@@ -109,7 +108,7 @@ func TestOnlineUsers(t *testing.T) {
 		t.Errorf("expected 2 users, got %d: %v", len(users), users)
 	}
 
-	// Check both users are present
+	// 检查两个用户都存在
 	found := make(map[string]bool)
 	for _, u := range users {
 		found[u] = true
@@ -119,7 +118,7 @@ func TestOnlineUsers(t *testing.T) {
 	}
 }
 
-// ---------- Offline queue operations ----------
+// ---------- 离线队列操作 ----------
 
 func TestOfflineStoreAndDrain(t *testing.T) {
 	h := NewHub(100)
@@ -144,7 +143,7 @@ func TestOfflineStoreAndDrain(t *testing.T) {
 		}
 	}
 
-	// Drain again should return empty
+	// 再次排空应返回空
 	empty := h.DrainOffline(context.Background(),"alice")
 	if len(empty) != 0 {
 		t.Errorf("expected empty after drain, got %d messages", len(empty))
@@ -164,7 +163,7 @@ func TestOfflineQueueTruncation(t *testing.T) {
 	maxSize := 10
 	h := NewHub(maxSize)
 
-	// Store more than max
+	// 存储超过上限的消息
 	for i := 0; i < maxSize+5; i++ {
 		h.StoreOffline(context.Background(),"alice", &proto.Message{MsgId: int64(i)})
 	}
@@ -174,7 +173,7 @@ func TestOfflineQueueTruncation(t *testing.T) {
 		t.Fatalf("expected %d messages after truncation, got %d", maxSize, len(drained))
 	}
 
-	// Oldest should be dropped (first 5), so first message should be msg #5
+	// 最旧的应被丢弃（前 5 条），因此第一条消息应为 #5
 	if drained[0].MsgId != 5 {
 		t.Errorf("expected oldest kept msg to be #5, got #%d", drained[0].MsgId)
 	}

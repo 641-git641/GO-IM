@@ -1,41 +1,41 @@
 /**
- * Utilities for int64 ↔ string conversion, date formatting, and JSON parsing.
+ * int64 ↔ string 转换、日期格式化与 JSON 解析的工具函数。
  *
- * IMPORTANT: proto int64 fields (seq, msg_id, timestamp) arrive as bigint
- * from @bufbuild/protobuf. We convert them to strings immediately to avoid
- * precision loss and to keep them safely serializable for Zustand/JSON.
+ * 重要:来自 @bufbuild/protobuf 的 proto int64 字段 (seq、msg_id、timestamp)
+ * 会以 bigint 形式到达。我们会立即将它们转换为字符串,以避免精度损失,
+ * 并确保它们能被 Zustand/JSON 安全序列化。
  */
 
-/** Convert a bigint (or number) to a safe string */
+/** 将 bigint(或 number)转换为安全的字符串 */
 export function bigintToString(n: bigint | number | string): string {
   if (typeof n === 'string') return n;
   return String(n);
 }
 
-/** Convert a string back to bigint for message construction */
+/** 将字符串转回 bigint,用于构造消息 */
 export function stringToBigint(s: string): bigint {
   return BigInt(s);
 }
 
-/** Format a unix millisecond timestamp string to HH:mm */
+/** 将 Unix 毫秒时间戳字符串格式化为 HH:mm */
 export function formatTime(ts: string | number | bigint): string {
   const ms = typeof ts === 'bigint' ? Number(ts) : typeof ts === 'string' ? Number(ts) : ts;
   const d = new Date(ms);
   return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 }
 
-/** Format a unix millisecond timestamp to a relative or absolute date */
+/** 将 Unix 毫秒时间戳格式化为相对或绝对日期 */
 export function formatDate(ts: string | number | bigint): string {
   const ms = typeof ts === 'bigint' ? Number(ts) : typeof ts === 'string' ? Number(ts) : ts;
   const d = new Date(ms);
   const now = new Date();
   const diff = now.getTime() - ms;
 
-  // Today: show time
+  // 今天:显示时间
   if (diff < 24 * 3600 * 1000 && d.getDate() === now.getDate()) {
     return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
   }
-  // Yesterday: compare full date (year-month-day), not just day-of-month
+  // 昨天:比较完整日期(年-月-日),而不仅是当月的第几天
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
   if (
@@ -45,14 +45,14 @@ export function formatDate(ts: string | number | bigint): string {
   ) {
     return '昨天';
   }
-  // This year
+  // 今年
   if (d.getFullYear() === now.getFullYear()) {
     return d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
   }
   return d.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
 }
 
-/** Try to parse a string as JSON; return null if not valid JSON */
+/** 尝试将字符串解析为 JSON;若不是合法 JSON 则返回 null */
 export function tryParseJSON<T = unknown>(s: string): T | null {
   try {
     return JSON.parse(s);
@@ -61,7 +61,7 @@ export function tryParseJSON<T = unknown>(s: string): T | null {
   }
 }
 
-/** Check if content is a group notification */
+/** 检查内容是否为群组通知 */
 export function isGroupNotification(
   content: string,
 ): import('@/types').GroupNotification | null {
@@ -73,9 +73,8 @@ export function isGroupNotification(
 }
 
 /**
- * Check if content is a system-level message (group notifications,
- * friend requests, group creation, etc.) that should be rendered
- * as a centered notice rather than a chat bubble.
+ * 检查内容是否为系统级消息(群组通知、好友请求、群组创建等),
+ * 此类消息应渲染为居中通知而不是聊天气泡。
  */
 export function isSystemMessage(content: string): string | null {
   const parsed = tryParseJSON<{ type?: string }>(content);
@@ -91,13 +90,13 @@ export function isSystemMessage(content: string): string | null {
   return systemTypes.includes(parsed.type) ? parsed.type : null;
 }
 
-/** Check if a message is a recalled message */
+/** 检查消息是否为已撤回消息 */
 export function isRecalled(content: string): boolean {
   const parsed = tryParseJSON<{ recalled: boolean }>(content);
   return parsed?.recalled === true;
 }
 
-/** Generate a conversation display name from peer ID or group info */
+/** 根据对方 ID 或群组信息生成会话显示名称 */
 export function getConversationName(
   peerId: string,
   myUid: string,
@@ -107,12 +106,12 @@ export function getConversationName(
   return peerId === myUid ? '我' : peerId;
 }
 
-/** Generate avatar letters from a name */
+/** 根据名称生成头像字母 */
 export function getAvatarLetters(name: string): string {
   return name.slice(0, 2).toUpperCase();
 }
 
-/** Get MIME type category for display */
+/** 获取用于展示的 MIME 类型分类 */
 export function getFileCategory(mime: string): 'image' | 'video' | 'audio' | 'file' {
   if (mime.startsWith('image/')) return 'image';
   if (mime.startsWith('video/')) return 'video';
@@ -120,7 +119,7 @@ export function getFileCategory(mime: string): 'image' | 'video' | 'audio' | 'fi
   return 'file';
 }
 
-/** Build a file download URL */
+/** 构造文件下载 URL */
 export function getFileURL(
   fileId: string,
   uid: string,

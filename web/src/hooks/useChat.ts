@@ -10,12 +10,12 @@ export function useChat() {
   const { uid } = useAuthStore();
   const { addMessage, setNoMoreHistory, upsertConversation } = useChatStore();
 
-  /** Send a text message */
+  /** 发送文本消息 */
   const sendText = useCallback(
     (peerId: string, text: string, chatType: ChatTypeValue = ChatType.Single) => {
       if (!text.trim()) return false;
 
-      // Ensure conversation exists
+      // 确保会话存在
       upsertConversation(peerId, peerId, chatType);
 
       const seq = wsManager.nextSeq();
@@ -36,10 +36,10 @@ export function useChat() {
         recalled: false,
       };
 
-      // Optimistic add
+      // 乐观添加(先本地显示)
       addMessage(peerId, msg, uid);
 
-      // Send via WebSocket
+      // 通过 WebSocket 发送
       wsManager.send({
         seq,
         msgId: '0',
@@ -58,7 +58,7 @@ export function useChat() {
     [uid, addMessage, upsertConversation],
   );
 
-  /** Send a file message (after upload) */
+  /** 发送文件消息(上传完成后) */
   const sendFile = useCallback(
     (peerId: string, metadata: FileMetadata, chatType: ChatTypeValue = ChatType.Single) => {
       upsertConversation(peerId, peerId, chatType);
@@ -107,19 +107,19 @@ export function useChat() {
     [uid, addMessage, upsertConversation],
   );
 
-  /** Load message history */
+  /** 加载历史消息 */
   const loadHistory = useCallback(
     (peerId: string, chatType: ChatTypeValue = ChatType.Single, before?: string) => {
       const conv = useChatStore.getState().conversations.get(peerId);
       if (conv && !conv.hasMore) return;
 
-      // Save existing message IDs before we request history. The global handler
-      // (useWebSocket) will add incoming history Chat messages to the conversation
-      // in DESC order (newest first). We track which messages pre-existed so we can
-      // extract the new ones, reverse them to chronological order, and rebuild.
+      // 在请求历史之前保存已有的消息 ID。全局处理器
+      // (useWebSocket) 会将收到的历史 Chat 消息以 DESC 顺序
+      // (新的在前)加入会话。我们记录哪些消息已存在,以便
+      // 提取新消息、按时间正序排列并重建列表。
       const existingIds = new Set((conv?.messages || []).map((m) => m.msgId));
 
-      // Find oldest message timestamp
+      // 查找最旧消息的时间戳
       let beforeTs = before || String(Date.now());
       if (!before && conv && conv.messages.length > 0) {
         beforeTs = conv.messages[0].timestamp;
@@ -131,12 +131,12 @@ export function useChat() {
         completeReceived = true;
         unsubHistory();
 
-        // Get the conversation after the global handler has added history messages.
+        // 在全局处理器添加历史消息后获取会话。
         const updatedConv = useChatStore.getState().conversations.get(peerId);
         if (!updatedConv) return;
 
         const allMessages = updatedConv.messages;
-        // Separate pre-existing messages from newly loaded history messages.
+        // 区分已存在的消息与刚加载的历史消息。
         const oldMessages = allMessages.filter((m) => existingIds.has(m.msgId));
         const newMessages = allMessages.filter((m) => !existingIds.has(m.msgId));
 
@@ -145,11 +145,11 @@ export function useChat() {
           return;
         }
 
-        // History arrives in DESC order (newest first). Reverse to chronological
-        // (oldest first) so it renders top-to-bottom correctly.
+        // 历史消息以 DESC 顺序到达(新的在前)。反转成时间正序
+        // (旧的在前),以便自上而下正确渲染。
         newMessages.reverse();
 
-        // Rebuild: history messages first (oldest at top), then pre-existing messages.
+        // 重建:历史消息在前(最旧的在顶部),然后是已存在的消息。
         const rebuilt = [...newMessages, ...oldMessages];
 
         useChatStore.setState((s) => {
@@ -163,7 +163,7 @@ export function useChat() {
         }
       });
 
-      // Send history request, retrying if WS not yet connected
+      // 发送历史请求,若 WS 尚未连接则重试
       const sendHistoryRequest = () => {
         const sent = wsManager.send({
           seq: String(HISTORY_LIMIT),
@@ -178,7 +178,7 @@ export function useChat() {
           needAck: false,
         });
         if (!sent) {
-          // WS not connected yet, retry in 300ms
+          // WS 尚未连接,300ms 后重试
           if (!completeReceived) {
             setTimeout(sendHistoryRequest, 300);
           }
@@ -186,7 +186,7 @@ export function useChat() {
       };
       sendHistoryRequest();
 
-      // Timeout fallback
+      // 超时兜底
       setTimeout(() => {
         if (!completeReceived) {
           unsubHistory();
@@ -196,7 +196,7 @@ export function useChat() {
     [uid, setNoMoreHistory],
   );
 
-  /** Send a read receipt */
+  /** 发送已读回执 */
   const sendReadReceipt = useCallback(
     (peerId: string, lastMsgId: string) => {
       if (!uid || !peerId) return;
@@ -217,7 +217,7 @@ export function useChat() {
     [uid],
   );
 
-  /** Recall a message */
+  /** 撤回一条消息 */
   const recallMessage = useCallback(
     (peerId: string, msgId: string) => {
       wsManager.send({
@@ -236,7 +236,7 @@ export function useChat() {
     [uid],
   );
 
-  /** Forward a message to another conversation */
+  /** 将消息转发到另一个会话 */
   const forwardMessage = useCallback(
     (targetPeerId: string, originalMsg: ChatMessage, chatType: ChatTypeValue = ChatType.Single) => {
       upsertConversation(targetPeerId, targetPeerId, chatType);
@@ -244,7 +244,7 @@ export function useChat() {
       const seq = wsManager.nextSeq();
       const now = String(Date.now());
 
-      // Build forward content with metadata about the original message
+      // 构造带有原消息元数据的转发内容
       const forwardContent = JSON.stringify({
         forwarded: true,
         original_from: originalMsg.from,
@@ -287,7 +287,7 @@ export function useChat() {
     [uid, addMessage, upsertConversation],
   );
 
-  /** Edit a previously sent message */
+  /** 编辑一条已发送的消息 */
   const editMessage = useCallback(
     (peerId: string, originalMsgId: string, newText: string, chatType: ChatTypeValue = ChatType.Single) => {
       if (!newText.trim()) return false;

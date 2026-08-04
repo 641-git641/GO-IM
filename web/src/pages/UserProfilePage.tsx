@@ -24,7 +24,7 @@ export default function UserProfilePage() {
   const isOnline = onlineUsers.includes(profileUid || '');
   const isSelf = profileUid === myUid;
 
-  // Determine friendship status
+  // 判断好友关系状态
   const friendRel = friends.find((f) => f.uid === profileUid);
   const isFriend = !!friendRel;
   const pendingReq = pendingRequests.find((r) => r.from_uid === profileUid);
@@ -37,7 +37,7 @@ export default function UserProfilePage() {
       setFriends(data.friends);
       setPendingRequests(data.pending_requests);
     } catch {
-      // ignore errors — friend system might be unavailable
+      // 忽略错误 —— 好友系统可能不可用
     } finally {
       setLoading(false);
     }
@@ -53,7 +53,7 @@ export default function UserProfilePage() {
     setError('');
     try {
       await sendFriendRequest(profileUid);
-      // Also notify via WebSocket
+      // 同时通过 WebSocket 通知
       wsManager.send({
         seq: '0',
         msgId: '0',
@@ -82,7 +82,7 @@ export default function UserProfilePage() {
       await acceptFriendRequest(profileUid);
       addFriend({ uid: profileUid, friend_uid: myUid, status: 1, created_at: Date.now() });
       removePendingRequest(profileUid);
-      // Notify via WebSocket
+      // 通过 WebSocket 通知
       wsManager.send({
         seq: '0',
         msgId: '0',
@@ -136,7 +136,7 @@ export default function UserProfilePage() {
   return (
     <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-950">
       <div className="max-w-2xl mx-auto p-6">
-        {/* Back button */}
+        {/* 返回按钮 */}
         <button
           onClick={() => navigate(-1)}
           className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 mb-4 transition-colors"
@@ -145,9 +145,9 @@ export default function UserProfilePage() {
           返回
         </button>
 
-        {/* Profile card */}
+        {/* 资料卡片 */}
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-          {/* Header */}
+          {/* 头部 */}
           <div className="p-6 text-center">
             <div className="w-20 h-20 rounded-full bg-primary-500 flex items-center justify-center text-white text-2xl font-bold mx-auto">
               {profileUid.slice(0, 2).toUpperCase()}
@@ -159,7 +159,7 @@ export default function UserProfilePage() {
             </div>
           </div>
 
-          {/* Actions */}
+          {/* 操作 */}
           {!isSelf && (
             <div className="px-6 pb-6 space-y-3">
               {error && (
@@ -173,7 +173,7 @@ export default function UserProfilePage() {
               )}
 
               <div className="flex gap-2">
-                {/* Send Message */}
+                {/* 发送消息 */}
                 <button
                   onClick={handleSendMessage}
                   className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-primary-500 text-white text-sm font-medium rounded-lg hover:bg-primary-600 transition-colors"
@@ -182,7 +182,7 @@ export default function UserProfilePage() {
                   发消息
                 </button>
 
-                {/* Friend action */}
+                {/* 好友操作 */}
                 {isFriend ? (
                   <button
                     onClick={handleRemove}

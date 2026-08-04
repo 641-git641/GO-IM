@@ -1,9 +1,9 @@
 // ============================================================
-// IM Frontend TypeScript Types
-// Mirrors the proto Message structure from api/proto/message.proto
+// IM 前端 TypeScript 类型
+// 与 api/proto/message.proto 中的 proto Message 结构保持一致
 // ============================================================
 
-/** Command types (matching Go proto.CmdXxx constants) */
+/** 命令类型(与 Go 的 proto.CmdXxx 常量对应) */
 export const Cmd = {
   None: 0,
   Chat: 1,
@@ -34,7 +34,7 @@ export const Cmd = {
 
 export type CmdType = (typeof Cmd)[keyof typeof Cmd];
 
-/** Chat types */
+/** 聊天类型 */
 export const ChatType = {
   Single: 1,
   Group: 2,
@@ -42,7 +42,7 @@ export const ChatType = {
 
 export type ChatTypeValue = (typeof ChatType)[keyof typeof ChatType];
 
-/** Message content types */
+/** 消息内容类型 */
 export const MsgType = {
   Text: 1,
   Image: 2,
@@ -54,58 +54,58 @@ export const MsgType = {
 export type MsgTypeValue = (typeof MsgType)[keyof typeof MsgType];
 
 /**
- * Represents a decoded protobuf Message.
- * int64 fields (seq, msg_id, timestamp) use bigint in JS.
- * We store them as strings for safe JSON serialization and React keys.
+ * 表示解码后的 protobuf Message。
+ * int64 字段 (seq、msg_id、timestamp) 在 JS 中使用 bigint。
+ * 我们以字符串形式存储它们,以便安全的 JSON 序列化和作为 React key。
  */
 export interface IMMessage {
-  seq: string; // client sequence (bigint → string)
-  msgId: string; // server snowflake ID (bigint → string)
+  seq: string; // 客户端序列号 (bigint → string)
+  msgId: string; // 服务器雪花 ID (bigint → string)
   cmd: CmdType;
-  from: string; // sender UID (server-set)
-  to: string; // receiver UID or group ID
+  from: string; // 发送者 UID(服务器设置)
+  to: string; // 接收者 UID 或群组 ID
   chatType: ChatTypeValue;
   msgType: MsgTypeValue;
-  content: string; // plain text or JSON
-  timestamp: string; // unix millisecond (bigint → string)
+  content: string; // 纯文本或 JSON
+  timestamp: string; // Unix 毫秒时间戳 (bigint → string)
   needAck: boolean;
 }
 
-/** Pending/sent status for optimistic UI */
+/** 用于乐观 UI 的待发送/已发送状态 */
 export type MessageStatus = 'sending' | 'sent' | 'failed' | 'read';
 
-/** A message enriched with UI state */
+/** 带有 UI 状态的消息 */
 export interface ChatMessage extends IMMessage {
   status: MessageStatus;
   recalled: boolean;
 }
 
-/** Conversation summary (built client-side from messages) */
+/** 会话摘要(在客户端根据消息构建) */
 export interface Conversation {
-  peerId: string; // the other party's UID or group ID
-  name: string; // display name
+  peerId: string; // 对方的 UID 或群组 ID
+  name: string; // 显示名称
   chatType: ChatTypeValue;
-  lastMessage: string; // preview text
-  lastTime: number; // unix ms
+  lastMessage: string; // 预览文本
+  lastTime: number; // Unix 毫秒
   unread: number;
   messages: ChatMessage[];
-  hasMore: boolean; // true if more history available
+  hasMore: boolean; // 是否有更多历史消息
 }
 
-/** User info as returned by /online or /login */
+/** /online 或 /login 返回的用户信息 */
 export interface User {
   uid: string;
   username: string;
 }
 
-/** Login response from POST /login */
+/** POST /login 的登录响应 */
 export interface LoginResponse {
   uid: string;
   username: string;
   token: string;
 }
 
-/** Group info — keys match backend JSON field names. */
+/** 群组信息 —— 键与后端 JSON 字段名一致。 */
 export interface GroupInfo {
   id: string;
   name: string;
@@ -115,7 +115,7 @@ export interface GroupInfo {
   created_at: number;
 }
 
-/** Group list item from /group/list */
+/** /group/list 的群组列表项 */
 export interface GroupListItem {
   id: string;
   name: string;
@@ -124,7 +124,7 @@ export interface GroupListItem {
   created_at: number;
 }
 
-/** File upload response */
+/** 文件上传响应 */
 export interface UploadResponse {
   file_id: string;
   name: string;
@@ -136,7 +136,7 @@ export interface UploadResponse {
   thumb_height?: number;
 }
 
-/** File metadata embedded in CmdFile content */
+/** 嵌入 CmdFile 内容中的文件元数据 */
 export interface FileMetadata {
   file_id: string;
   name: string;
@@ -144,10 +144,10 @@ export interface FileMetadata {
   mime: string;
   width?: number;
   height?: number;
-  text?: string; // optional caption
+  text?: string; // 可选说明文字
 }
 
-/** Search params */
+/** 搜索参数 */
 export interface SearchParams {
   q: string;
   peer?: string;
@@ -159,7 +159,7 @@ export interface SearchParams {
   limit?: number;
 }
 
-/** Search result message */
+/** 搜索结果消息 */
 export interface SearchResultMessage {
   msg_id: string;
   cmd: number;
@@ -172,7 +172,7 @@ export interface SearchResultMessage {
   need_ack: boolean;
 }
 
-/** Search response */
+/** 搜索响应 */
 export interface SearchResponse {
   query: string;
   messages: SearchResultMessage[];
@@ -180,38 +180,38 @@ export interface SearchResponse {
   next_cursor: number;
 }
 
-/** Friend info */
+/** 好友信息 */
 export interface Friend {
   uid: string;
   friend_uid: string;
-  status: number; // 0=pending, 1=accepted, 2=rejected
+  status: number; // 0=待处理, 1=已接受, 2=已拒绝
   created_at: number;
 }
 
-/** Friend request from the receiver's perspective */
+/** 从接收方视角的好友请求 */
 export interface FriendRequest {
   from_uid: string;
   username: string;
   created_at: number;
 }
 
-/** Reply metadata embedded in message content */
+/** 嵌入消息内容中的回复元数据 */
 export interface ReplyTo {
   msg_id: string;
   from: string;
   content: string;
 }
 
-/** Group notification (member_joined/member_left) */
+/** 群组通知 (member_joined/member_left) */
 export interface GroupNotification {
   type: 'member_joined' | 'member_left';
   group_id: string;
   uid: string;
 }
 
-// ---- Admin types ----
+// ---- 管理类型 ----
 
-/** Admin dashboard system stats */
+/** 管理后台系统统计 */
 export interface AdminStats {
   status: string;
   online_users: number;
@@ -224,7 +224,7 @@ export interface AdminStats {
   };
 }
 
-/** User record for admin listing */
+/** 管理列表中的用户记录 */
 export interface AdminUser {
   uid: string;
   username: string;
@@ -233,7 +233,7 @@ export interface AdminUser {
   created_at: number;
 }
 
-/** Paginated user list response */
+/** 分页用户列表响应 */
 export interface AdminUsersResponse {
   users: AdminUser[];
   total: number;
@@ -241,7 +241,7 @@ export interface AdminUsersResponse {
   limit: number;
 }
 
-/** Message browse response for admin */
+/** 管理后台的消息浏览响应 */
 export interface AdminBrowseResponse {
   messages: SearchResultMessage[];
   limit: number;

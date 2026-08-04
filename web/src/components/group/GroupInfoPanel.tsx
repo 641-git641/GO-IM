@@ -21,17 +21,17 @@ export default function GroupInfoPanel({ group, open, onClose, onMarkUnread, onD
   const [selectedFriends, setSelectedFriends] = useState<Set<string>>(new Set());
   const [addStatus, setAddStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [adding, setAdding] = useState(false);
-  const [kicking, setKicking] = useState<string | null>(null); // uid being kicked
+  const [kicking, setKicking] = useState<string | null>(null); // 正在被移出的 uid
   const [renaming, setRenaming] = useState(false);
   const [newGroupName, setNewGroupName] = useState(group.name);
   const [renamingLoading, setRenamingLoading] = useState(false);
-  const [transferring, setTransferring] = useState<string | null>(null); // uid being transferred to
+  const [transferring, setTransferring] = useState<string | null>(null); // 被转让群主的 uid
 
   if (!open) return null;
 
   const isOwner = uid === group.owner_uid;
 
-  // Load friends and filter out existing group members when the add form opens
+  // 打开添加表单时加载好友,并过滤掉已在群组中的成员
   const handleToggleAddMember = () => {
     setShowAddMember(!showAddMember);
     if (!showAddMember) {
@@ -45,7 +45,7 @@ export default function GroupInfoPanel({ group, open, onClose, onMarkUnread, onD
     }
   };
 
-  // Get friends not already in the group
+  // 获取不在群组中的好友
   const nonMemberFriends = friends.filter((f) => !group.members.includes(f.uid));
 
   const toggleFriend = (friendUid: string) => {
@@ -73,7 +73,7 @@ export default function GroupInfoPanel({ group, open, onClose, onMarkUnread, onD
       try {
         await inviteGroupMember(group.id, targetUid);
         successCount++;
-        // Also notify via WebSocket for real-time delivery
+        // 同时通过 WebSocket 通知以实现实时送达
         wsManager.send({
           seq: '0',
           msgId: '0',
@@ -99,7 +99,7 @@ export default function GroupInfoPanel({ group, open, onClose, onMarkUnread, onD
       setSelectedFriends(new Set());
     }
 
-    // Refresh group info
+    // 刷新群组信息
     wsManager.send({
       seq: '0',
       msgId: '0',
@@ -122,7 +122,7 @@ export default function GroupInfoPanel({ group, open, onClose, onMarkUnread, onD
 
     try {
       await kickGroupMember(group.id, targetUid);
-      // Refresh group info
+      // 刷新群组信息
       wsManager.send({
         seq: '0',
         msgId: '0',
@@ -152,7 +152,7 @@ export default function GroupInfoPanel({ group, open, onClose, onMarkUnread, onD
     setRenamingLoading(true);
     try {
       await renameGroup(group.id, newGroupName.trim());
-      // Refresh group info
+      // 刷新群组信息
       wsManager.send({
         seq: '0', msgId: '0', cmd: Cmd.GroupInfo, from: uid, to: group.id,
         chatType: ChatType.Group, msgType: MsgType.Text, content: '', timestamp: '0', needAck: false,
@@ -171,7 +171,7 @@ export default function GroupInfoPanel({ group, open, onClose, onMarkUnread, onD
     setTransferring(toUid);
     try {
       await transferGroup(group.id, toUid);
-      // Refresh group info
+      // 刷新群组信息
       wsManager.send({
         seq: '0', msgId: '0', cmd: Cmd.GroupInfo, from: uid, to: group.id,
         chatType: ChatType.Group, msgType: MsgType.Text, content: '', timestamp: '0', needAck: false,
@@ -187,7 +187,7 @@ export default function GroupInfoPanel({ group, open, onClose, onMarkUnread, onD
   return (
     <div className="fixed inset-y-0 right-0 z-40 w-80 bg-white border-l border-gray-200 shadow-xl">
       <div className="flex flex-col h-full">
-        {/* Header */}
+        {/* 头部 */}
         <div className="h-14 px-4 flex items-center justify-between border-b border-gray-200 flex-shrink-0">
           <h3 className="text-base font-semibold text-gray-900">群组信息</h3>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100">
@@ -195,13 +195,13 @@ export default function GroupInfoPanel({ group, open, onClose, onMarkUnread, onD
           </button>
         </div>
 
-        {/* Content */}
+        {/* 内容 */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           <div className="text-center">
             <div className="w-16 h-16 rounded-full bg-primary-500 flex items-center justify-center text-white text-xl font-bold mx-auto">
               {group.name.slice(0, 2).toUpperCase()}
             </div>
-            {/* Editable group name */}
+            {/* 可编辑的群组名称 */}
             {isOwner && renaming ? (
               <div className="mt-2 flex items-center justify-center gap-1">
                 <input
@@ -266,7 +266,7 @@ export default function GroupInfoPanel({ group, open, onClose, onMarkUnread, onD
             </div>
           </div>
 
-          {/* Members */}
+          {/* 成员 */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-semibold text-gray-900">
@@ -283,7 +283,7 @@ export default function GroupInfoPanel({ group, open, onClose, onMarkUnread, onD
               )}
             </div>
 
-            {/* Add member form — friend picker */}
+            {/* 添加成员表单 —— 好友选择器 */}
             {showAddMember && (
               <div className="mb-3 p-3 bg-gray-50 rounded-lg space-y-2">
                 {nonMemberFriends.length === 0 ? (
@@ -359,7 +359,7 @@ export default function GroupInfoPanel({ group, open, onClose, onMarkUnread, onD
                       群主
                     </span>
                   )}
-                  {/* Transfer button: visible to owner only, for non-owner members */}
+                  {/* 转让按钮:仅群主可见,针对非群主成员 */}
                   {isOwner && member !== uid && member !== group.owner_uid && (
                     <button
                       onClick={() => handleTransfer(member)}
@@ -370,7 +370,7 @@ export default function GroupInfoPanel({ group, open, onClose, onMarkUnread, onD
                       <UserCheck className="w-3.5 h-3.5" />
                     </button>
                   )}
-                  {/* Kick button: visible to owner only, not for self */}
+                  {/* 移出按钮:仅群主可见,不能移出自己 */}
                   {isOwner && member !== uid && (
                     <button
                       onClick={() => handleKick(member)}
@@ -386,7 +386,7 @@ export default function GroupInfoPanel({ group, open, onClose, onMarkUnread, onD
             </div>
           </div>
 
-          {/* Conversation actions */}
+          {/* 会话操作 */}
           <div className="pt-3 border-t border-gray-200 space-y-2">
             {onMarkUnread && (
               <button

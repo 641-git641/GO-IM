@@ -1,5 +1,5 @@
 /**
- * Chat store — manages conversations, messages, and drafts.
+ * 聊天 store —— 管理会话、消息和草稿。
  */
 
 import { create } from 'zustand';
@@ -8,68 +8,68 @@ import { Cmd, ChatType, MsgType } from '@/types';
 import { bigintToString, formatTime, tryParseJSON } from '@/lib/utils';
 
 interface ChatState {
-  /** Map of peerId → Conversation */
+  /** peerId → Conversation 的映射 */
   conversations: Map<string, Conversation>;
-  /** Currently active conversation (peerId) */
+  /** 当前活跃会话 (peerId) */
   activePeer: string | null;
-  /** Draft messages per conversation */
+  /** 每个会话的草稿消息 */
   drafts: Map<string, string>;
 
-  // Actions
+  // 操作
   setActivePeer: (peerId: string | null) => void;
   setDraft: (peerId: string, text: string) => void;
   getDraft: (peerId: string) => string;
 
-  /** Add or update a conversation record */
+  /** 添加或更新会话记录 */
   upsertConversation: (peerId: string, name: string, chatType: ChatTypeValue) => void;
 
-  /** Add an incoming or sent message to a conversation */
+  /** 向会话添加一条收到的或发出的消息 */
   addMessage: (peerId: string, msg: ChatMessage, myUid: string) => void;
 
-  /** Confirm message delivery (ACK received) */
+  /** 确认消息送达(已收到 ACK) */
   confirmMessage: (peerId: string, seq: string, msgId: string, timestamp: string) => void;
 
-  /** Mark message as recalled */
+  /** 将消息标记为已撤回 */
   markRecalled: (peerId: string, msgId: string) => void;
 
-  /** Prepend history messages to a conversation */
+  /** 向会话前置插入历史消息 */
   prependMessages: (peerId: string, messages: ChatMessage[]) => void;
 
-  /** Mark conversation as having no more history */
+  /** 将会话标记为没有更多历史消息 */
   setNoMoreHistory: (peerId: string) => void;
 
-  /** Increment unread for a peer */
+  /** 增加某个会话对象的未读数 */
   incrementUnread: (peerId: string) => void;
 
-  /** Reset unread for a peer */
+  /** 重置某个会话对象的未读数 */
   resetUnread: (peerId: string) => void;
 
-  /** Get unread total */
+  /** 获取未读总数 */
   totalUnread: () => number;
 
-  /** Set unread counts in bulk (from server response) */
+  /** 批量设置未读数(来自服务器响应) */
   setUnreadCounts: (counts: Record<string, number>) => void;
 
-  /** Get sorted conversation list */
+  /** 获取排序后的会话列表 */
   getConversationList: () => Conversation[];
 
-  /** Delete a conversation (removes from list, does not affect server) */
+  /** 删除会话(从列表中移除,不影响服务器) */
   deleteConversation: (peerId: string) => void;
 
-  /** Delete a single message from local view only */
+  /** 仅从本地视图删除单条消息 */
   deleteMessage: (peerId: string, msgId: string) => void;
 
-  /** Typing indicator state (peerId → {uid, until}) */
+  /** 输入中指示器状态 (peerId → {uid, until}) */
   typingUsers: Map<string, { uid: string; until: number }>;
-  /** Record that a user is typing in a conversation */
+  /** 记录用户正在某个会话中输入 */
   setTyping: (peerId: string, uid: string) => void;
-  /** Active typing peerIds for display */
+  /** 用于展示的活跃输入会话对象 ID */
   getActiveTyping: () => Map<string, string[]>;
 
-  /** Mark messages in a conversation as read by a specific user */
+  /** 将会话中的消息标记为已被指定用户已读 */
   markMessagesRead: (peerId: string, readerUid: string) => void;
 
-  /** Manually mark a conversation as unread */
+  /** 手动将会话标记为未读 */
   markUnread: (peerId: string) => void;
 }
 
@@ -109,7 +109,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       });
       set({ conversations });
     } else if (name && name !== peerId && name !== existing.peerId && existing.name === existing.peerId) {
-      // Update name if existing name is just the raw peerId (e.g. "g_123" → "My Group")
+      // 若现有名称只是原始 peerId,则更新名称 (例如 "g_123" → "My Group")
       conversations.set(peerId, { ...existing, name });
       set({ conversations });
     }
@@ -120,10 +120,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const conv = conversations.get(peerId);
     if (!conv) return;
 
-    // Check for duplicate (by msgId)
+    // 检查重复 (按 msgId)
     if (msg.msgId !== '0' && conv.messages.some((m) => m.msgId === msg.msgId)) return;
 
-    // Extract display text from JSON content for the conversation list preview
+    // 从 JSON 内容中提取展示文本,用于会话列表预览
     let previewText: string;
     if (msg.recalled) {
       previewText = '[消息已撤回]';
@@ -153,7 +153,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       messages: [...conv.messages, msg],
       lastMessage: previewText,
       lastTime: Number(msg.timestamp) || Date.now(),
-      // Only increment unread if NOT the active conversation and NOT from self
+      // 仅当不是当前活跃会话且非本人消息时才增加未读数
       unread:
         get().activePeer === peerId || msg.from === myUid
           ? conv.unread
@@ -201,7 +201,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const conv = conversations.get(peerId);
     if (!conv) return;
 
-    // Filter out messages already present
+    // 过滤掉已存在的消息
     const existingIds = new Set(conv.messages.map((m) => m.msgId));
     const newMsgs = messages.filter((m) => !existingIds.has(m.msgId));
 
@@ -289,7 +289,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   setTyping: (peerId, uid) => {
     const typingUsers = new Map(get().typingUsers);
-    typingUsers.set(peerId, { uid, until: Date.now() + 5000 }); // 5s timeout
+    typingUsers.set(peerId, { uid, until: Date.now() + 5000 }); // 5 秒超时
     set({ typingUsers });
   },
 
@@ -311,7 +311,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const conv = conversations.get(peerId);
     if (!conv) return;
 
-    // Mark all messages from me as read (the reader has seen them)
+    // 将我发出的所有消息标记为已读(已读者已看到它们)
     const messages = conv.messages.map((m) => {
       if (m.from !== readerUid && !m.recalled && m.status === 'sent') {
         return { ...m, status: 'read' as const };

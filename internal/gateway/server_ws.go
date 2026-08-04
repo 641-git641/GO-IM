@@ -13,13 +13,13 @@ import (
 )
 
 const (
-	// Time allowed to write a message to the peer.
+	// 允许向对端写入消息的时间。
 	writeWait = 10 * time.Second
 )
 
-// HandleWS upgrades HTTP to WebSocket and starts the client pumps.
+// HandleWS 将 HTTP 升级为 WebSocket 并启动客户端读写循环。
 func (s *Server) HandleWS(w http.ResponseWriter, r *http.Request) {
-	// Extract JWT token from query parameter
+	// 从查询参数中提取 JWT 令牌
 	tokenStr := r.URL.Query().Get("token")
 	if tokenStr == "" {
 		http.Error(w, "missing token", http.StatusUnauthorized)
@@ -38,8 +38,8 @@ func (s *Server) HandleWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Connection-scoped context lives for the WebSocket lifetime.
-	// HTTP request context ends after the upgrade, so we use context.Background().
+	// 连接级 context 的生命周期与 WebSocket 相同。
+	// HTTP 请求 context 在升级后即结束,因此使用 context.Background()。
 	connCtx := context.Background()
 
 	transport := newWsTransport(conn)
@@ -48,7 +48,7 @@ func (s *Server) HandleWS(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[server] client connected uid=%s username=%s", claims.UID, claims.Username)
 
-	// Send login success response
+	// 发送登录成功响应
 	client.Send(&proto.Message{
 		Cmd:       proto.CmdLoginResp,
 		To:        claims.UID,
@@ -56,13 +56,13 @@ func (s *Server) HandleWS(w http.ResponseWriter, r *http.Request) {
 		Timestamp: time.Now().UnixMilli(),
 	})
 
-	// Start transport-agnostic write loop and WebSocket-specific read loop.
+	// 启动与传输无关的写循环和 WebSocket 专用的读循环。
 	go client.WriteLoop()
 	go wsReadPump(connCtx, conn, client, s.router, s.connCfg)
 }
 
-// wsReadPump reads protobuf messages from a WebSocket connection.
-// It enforces sender identity and delegates to the Router.
+// wsReadPump 从 WebSocket 连接读取 protobuf 消息。
+// 它强制发送方身份并委托给 Router 处理。
 func wsReadPump(ctx context.Context, conn *websocket.Conn, client *Client, router *Router, cfg configs.GatewayConnConfig) {
 	defer func() {
 		client.clients.Unregister(ctx, client)
@@ -78,7 +78,7 @@ func wsReadPump(ctx context.Context, conn *websocket.Conn, client *Client, route
 		return nil
 	})
 
-	// Start WebSocket ping loop (replaces writePump's ticker).
+	// 启动 WebSocket ping 循环(取代 writePump 的定时器)。
 	pingDone := make(chan struct{})
 	defer close(pingDone)
 	go wsPingLoop(conn, time.Duration(cfg.PingPeriod), pingDone, client.closed)
@@ -100,8 +100,8 @@ func wsReadPump(ctx context.Context, conn *websocket.Conn, client *Client, route
 			continue
 		}
 
-		// Fill in sender info from the authenticated connection.
-		// This is a security feature — the client cannot forge its identity.
+		// 从已认证的连接中填充发送方信息。
+		// 这是安全特性 —— 客户端无法伪造其身份。
 		msg.From = client.UID
 		if msg.Timestamp == 0 {
 			msg.Timestamp = time.Now().UnixMilli()
@@ -111,7 +111,7 @@ func wsReadPump(ctx context.Context, conn *websocket.Conn, client *Client, route
 	}
 }
 
-// wsPingLoop sends WebSocket Ping frames periodically for keepalive.
+// wsPingLoop 定期发送 WebSocket Ping 帧以保活。
 func wsPingLoop(conn *websocket.Conn, period time.Duration, done, closed chan struct{}) {
 	ticker := time.NewTicker(period)
 	defer ticker.Stop()

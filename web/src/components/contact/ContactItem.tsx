@@ -25,7 +25,7 @@ export default function ContactItem({
       onClick={onClick}
       className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
     >
-      {/* Avatar */}
+      {/* 头像 */}
       <div className="relative flex-shrink-0">
         <div className="w-10 h-10 rounded-full bg-primary-500 flex items-center justify-center text-white font-semibold text-sm">
           {avatar}
@@ -40,7 +40,7 @@ export default function ContactItem({
         )}
       </div>
 
-      {/* Info */}
+      {/* 信息 */}
       <div className="flex-1 min-w-0">
         <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{name}</h3>
         <p className="text-xs text-gray-500 dark:text-gray-400">
