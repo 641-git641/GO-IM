@@ -46,6 +46,10 @@ func NewProducer(cfg ProducerConfig) (*Producer, error) {
 		// 同步写入：每次 WriteMessages 都会阻塞直到确认。
 		// 调用方使用 goroutine，因此热路径永远不会被阻塞。
 		Async: false,
+		// 允许自动创建 topic：kafka-go 默认不允许，若生产 topic
+		// im.message.persist 未被预创建，发布会静默失败导致消息无法持久化。
+		// 开启后首次发布即自动建 topic，自愈部署遗漏。
+		AllowAutoTopicCreation: true,
 	}
 
 	log.Printf("[mq] producer ready (brokers=%v topic=%s)", cfg.Brokers, cfg.Topic)
