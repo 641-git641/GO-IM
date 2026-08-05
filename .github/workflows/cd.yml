@@ -1,0 +1,187 @@
+# CD 流水线 —— 自动构建 + 自动部署
+#
+# 触发:
+#   push main(仅当服务相关文件变更) + workflow_dispatch(手动)
+#
+# 流程:
+#   build  构建 gateway/logic/frontend 三个镜像,推送 GHCR(sha-<7> + latest)
+#   deploy 渲染生产配置(secrets 注入)→ git pull + scp 上传 → compose pull + up -d
+#          → curl https://$DOMAIN/health 健康检查(重试 180s)
+#
+# 前置条件(详见 README 部署章节):
+#   1. 服务器已 git clone 仓库到 ~/im,并手动执行过 deploy/init-ssl.sh
+#   2. 已配置全部 secrets(见下方脚本内引用)
+#
+# 回滚: 镜像带 sha-<7> 标签,可在服务器手动
+#   TAG=sha-<旧值> docker compose -f docker-compose.prod.yml -f docker-compose.cd.yml up -d
+
+name: CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'internal/**'
+      - 'cmd/**'
+      - 'api/**'
+      - 'web/**'
+      - 'Dockerfile.gateway'
+      - 'Dockerfile.logic'
+      - 'Dockerfile.frontend'
+      - 'docker-compose.prod.yml'
+      - 'docker-compose.cd.yml'
+      - 'deploy/**'
+      - 'go.mod'
+      - 'go.sum'
+  workflow_dispatch:
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & push · GHCR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      short_sha: ${{ steps.sha.outputs.short }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # GITHUB_TOKEN 只对当前仓库的包有写权限;若改用带 packages 的 PAT,
+      # 可在仓库 Settings → Secrets 加 GHCR_TOKEN 并在下方覆盖 password。
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 计算短 SHA
+        id: sha
+        run: echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push gateway
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.gateway
+          push: true
+          tags: |
+            ghcr.io/641-git641/go-im/gateway:sha-${{ steps.sha.outputs.short }}
+            ghcr.io/641-git641/go-im/gateway:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push logic
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.logic
+          push: true
+          tags: |
+            ghcr.io/641-git641/go-im/logic:sha-${{ steps.sha.outputs.short }}
+            ghcr.io/641-git641/go-im/logic:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.frontend
+          push: true
+          tags: |
+            ghcr.io/641-git641/go-im/frontend:sha-${{ steps.sha.outputs.short }}
+            ghcr.io/641-git641/go-im/frontend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy · SSH 部署
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 渲染生产配置(→ configs/config.prod.generated.json)
+        run: bash deploy/render-config.sh
+        env:
+          DOMAIN: ${{ secrets.DOMAIN }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+          MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+          ADMIN_UID: ${{ secrets.ADMIN_UID }}
+
+      # 先 pull 再 scp: 生成的配置是 gitignore 文件,不会被 git pull 覆盖。
+      - name: 服务器拉取最新代码
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -e
+            cd ~/im
+            git pull --ff-only
+
+      - name: 上传渲染配置与 compose override
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          source: "configs/config.prod.generated.json,docker-compose.cd.yml"
+          target: "~/im"
+
+      - name: 部署 & 健康检查
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          GHCR_USER: ${{ secrets.GHCR_USER }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
+          MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+          MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+          DOMAIN: ${{ secrets.DOMAIN }}
+          TAG: sha-${{ needs.build.outputs.short_sha }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          envs: GHCR_USER,GHCR_TOKEN,MYSQL_ROOT_PASSWORD,MYSQL_PASSWORD,MINIO_SECRET_KEY,DOMAIN,TAG
+          script: |
+            set -e
+            cd ~/im
+
+            # 登录 GHCR 以便拉取私有包;GHCR_TOKEN 为 PAT,仅需 read:packages 权限
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+            # 写入 compose 环境变量(gitignore 的 .env,MySQL/MinIO 首次启动时创建凭据,
+            # 之后保持不变 —— secrets 值一旦部署即应固定)
+            cat > .env <<EOF
+            MYSQL_ROOT_PASSWORD=$MYSQL_ROOT_PASSWORD
+            MYSQL_PASSWORD=$MYSQL_PASSWORD
+            MINIO_ROOT_PASSWORD=$MINIO_SECRET_KEY
+            EOF
+
+            docker compose -f docker-compose.prod.yml -f docker-compose.cd.yml pull
+            docker compose -f docker-compose.prod.yml -f docker-compose.cd.yml up -d --remove-orphans
+
+            echo "等待健康检查(最多 180s)..."
+            for i in $(seq 1 30); do
+              if curl -fsS "https://$DOMAIN/health" >/dev/null 2>&1; then
+                echo "✅ 健康检查通过: https://$DOMAIN/health"
+                exit 0
+              fi
+              sleep 6
+            done
+            echo "❌ 健康检查超时,当前服务状态:"
+            docker compose -f docker-compose.prod.yml -f docker-compose.cd.yml ps
+            exit 1
