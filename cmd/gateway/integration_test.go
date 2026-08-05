@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"testing"
 	"time"
@@ -47,6 +49,30 @@ func startTestServer(t *testing.T) (*App, func()) {
 	return app, func() {
 		cancel()
 		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// TestIntegrationMetrics 验证 /metrics 端点可用并暴露 IM 指标。
+func TestIntegrationMetrics(t *testing.T) {
+	_, cleanup := startTestServer(t)
+	defer cleanup()
+
+	resp, err := http.Get("http://localhost:18080/metrics")
+	if err != nil {
+		t.Fatalf("GET /metrics: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /metrics: expected 200, got %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	for _, want := range []string{"im_online_connections", "im_rate_limit_allowed_total", "go_goroutines"} {
+		if !bytes.Contains(body, []byte(want)) {
+			t.Errorf("GET /metrics body missing %q", want)
+		}
 	}
 }
 

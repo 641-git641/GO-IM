@@ -1,0 +1,37 @@
+// Alloy 配置 —— 抓取 IM 网关指标并推送 Grafana Cloud(免费版 Prometheus)
+//
+// 抓取源:  gateway:8080/metrics(compose 内网,不经过公网 nginx)
+// 推送目标: Grafana Cloud 的 Prometheus remote-write 端点
+// 凭据:     GRAFANA_CLOUD_URL(端点)/ GRAFANA_CLOUD_USER(实例 ID)
+//           / GRAFANA_CLOUD_TOKEN(token),均由容器环境变量注入
+//           (docker-compose.prod.yml 的 .env)。
+//
+// 注意: 三个 env 未配置时 Alloy 无法解析 remote-write 目标,容器会报错
+//       重启循环 —— 不影响主栈与 CD 健康检查;配好 secret 后 CD 重跑即恢复。
+
+// 从网关抓取指标。
+prometheus.scrape "im_gateway" {
+  targets = [{
+    __address__ = "gateway:8080",
+  }]
+  metrics_path = "/metrics"
+  scrape_interval = "15s"
+
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+// 推送 Grafana Cloud。
+prometheus.remote_write "grafana_cloud" {
+  endpoint {
+    url = env("GRAFANA_CLOUD_URL")
+    basic_auth {
+      username = env("GRAFANA_CLOUD_USER")
+      password = env("GRAFANA_CLOUD_TOKEN")
+    }
+  }
+  // 缓冲与重试:暂态失败不丢数据,持久失败会退避重试。
+  wal {
+    truncate_frequency = "1h"
+    min_keepalive_time = "30s"
+  }
+}

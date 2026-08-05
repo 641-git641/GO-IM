@@ -1,0 +1,146 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "在线连接数",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "im_online_connections", "legendFormat": "在线连接", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "消息吞吐(收/投递)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
+      "targets": [
+        { "expr": "sum(rate(im_messages_received_total[1m]))", "legendFormat": "收到", "refId": "A" },
+        { "expr": "sum(rate(im_messages_delivered_total[1m]))", "legendFormat": "投递成功", "refId": "B" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "cps" },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "投递延迟(收到 → ACK)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 0 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(im_message_delivery_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "P50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(im_message_delivery_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "P99",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s" },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "投递失败(转存离线)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 6 },
+      "targets": [
+        { "expr": "sum(rate(im_delivery_failures_total[1m]))", "legendFormat": "失败/秒", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "cps" },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "异步持久化(MySQL Save)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 6 },
+      "targets": [
+        { "expr": "sum(rate(im_persist_success_total[1m]))", "legendFormat": "成功/秒", "refId": "A" },
+        { "expr": "sum(rate(im_persist_fail_total[1m]))", "legendFormat": "失败/秒", "refId": "B" },
+        { "expr": "sum(rate(im_persist_queue_drop_total[1m]))", "legendFormat": "队列丢弃/秒", "refId": "C" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "cps" },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "限流拒绝",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 6 },
+      "targets": [
+        { "expr": "sum(rate(im_rate_limit_rejected_total[1m]))", "legendFormat": "拒绝/秒", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "cps" },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "type": "bargauge",
+      "title": "命令分布(次/分)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        { "expr": "topk(12, sum(rate(im_commands_total[1m])) by (cmd))", "legendFormat": "{{cmd}}", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "cpm" },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "运行时(goroutine / Go 进程)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 12 },
+      "targets": [
+        { "expr": "go_goroutines", "legendFormat": "goroutines", "refId": "A" },
+        { "expr": "go_memstats_alloc_bytes", "legendFormat": "堆分配(B)", "refId": "B" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": []
+      }
+    }
+  ],
+  "refresh": "15s",
+  "schemaVersion": 39,
+  "tags": ["im", "go"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "IM 网关可观测性",
+  "uid": "im-gateway-obs",
+  "version": 1
+}

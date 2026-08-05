@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -306,13 +307,13 @@ func (cm *ClusterManager) runHealthCheck() {
 		cm.mu.Unlock()
 
 		if healthy && !wasHealthy {
-			log.Printf("[cluster] peer %s recovered — adding back to hash ring", nodeID)
+			slog.Info("peer recovered, adding back to hash ring", "peer", nodeID)
 			cm.hr.Add(nodeID)
 			cm.mu.Lock()
 			cm.peerHealth[nodeID] = true
 			cm.mu.Unlock()
 		} else if !healthy && wasHealthy {
-			log.Printf("[cluster] peer %s is unhealthy — removing from hash ring", nodeID)
+			slog.Warn("peer unhealthy, removing from hash ring", "peer", nodeID)
 			cm.hr.Remove(nodeID)
 			cm.mu.Lock()
 			cm.peerHealth[nodeID] = false

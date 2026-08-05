@@ -15,6 +15,9 @@
 #      JWT_SECRET / MYSQL_ROOT_PASSWORD / MYSQL_PASSWORD / MINIO_ROOT_USER /
 #      MINIO_SECRET_KEY / ADMIN_UID);GHCR_USER / GHCR_TOKEN 可选 —— 镜像公开时
 #      匿名拉取即可,配了才执行 docker login(镜像转私有后按需补)
+#   3. GRAFANA_CLOUD_URL / GRAFANA_CLOUD_USER / GRAFANA_CLOUD_TOKEN 可选 ——
+#      接入 Grafana Cloud 免费版指标采集(见 deploy/alloy.config.alloy);
+#      不配则 alloy 容器空转/报错,不影响主栈与健康检查
 #
 # 回滚: 镜像带 sha-<7> 标签,可在服务器手动
 #   TAG=sha-<旧值> docker compose -f docker-compose.prod.yml -f docker-compose.cd.yml up -d
@@ -149,13 +152,16 @@ jobs:
           MINIO_ROOT_USER: ${{ secrets.MINIO_ROOT_USER }}
           MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
           DOMAIN: ${{ secrets.DOMAIN }}
+          GRAFANA_CLOUD_URL: ${{ secrets.GRAFANA_CLOUD_URL }}
+          GRAFANA_CLOUD_USER: ${{ secrets.GRAFANA_CLOUD_USER }}
+          GRAFANA_CLOUD_TOKEN: ${{ secrets.GRAFANA_CLOUD_TOKEN }}
           TAG: sha-${{ needs.build.outputs.short_sha }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          envs: GHCR_USER,GHCR_TOKEN,MYSQL_ROOT_PASSWORD,MYSQL_PASSWORD,MINIO_ROOT_USER,MINIO_SECRET_KEY,DOMAIN,TAG
+          envs: GHCR_USER,GHCR_TOKEN,MYSQL_ROOT_PASSWORD,MYSQL_PASSWORD,MINIO_ROOT_USER,MINIO_SECRET_KEY,DOMAIN,GRAFANA_CLOUD_URL,GRAFANA_CLOUD_USER,GRAFANA_CLOUD_TOKEN,TAG
           script: |
             set -e
             cd ~/im
@@ -173,6 +179,9 @@ jobs:
             MYSQL_PASSWORD=$MYSQL_PASSWORD
             MINIO_ROOT_USER=$MINIO_ROOT_USER
             MINIO_ROOT_PASSWORD=$MINIO_SECRET_KEY
+            GRAFANA_CLOUD_URL=$GRAFANA_CLOUD_URL
+            GRAFANA_CLOUD_USER=$GRAFANA_CLOUD_USER
+            GRAFANA_CLOUD_TOKEN=$GRAFANA_CLOUD_TOKEN
             EOF
 
             docker compose -f docker-compose.prod.yml -f docker-compose.cd.yml pull

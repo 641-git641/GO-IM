@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"runtime"
 	"strconv"
@@ -108,7 +109,7 @@ func Recovery(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if err := recover(); err != nil {
-				log.Printf("[panic] %s %s: %v", r.Method, r.URL.Path, err)
+				slog.Error("http handler panic recovered", "method", r.Method, "path", r.URL.Path, "error", err)
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			}
 		}()

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -18,6 +19,14 @@ import (
 
 // frameMaxSize 是最大 protobuf 帧负载大小。
 const frameHeaderSize = 4
+
+// gnetPoolDrops 是 gnet worker 池满丢弃的累计消息数(供 /metrics 暴露)。
+var gnetPoolDrops atomic.Int64
+
+// GnetPoolDrops 返回 gnet worker 池满丢弃的消息数(原子读取)。
+func GnetPoolDrops() int64 {
+	return gnetPoolDrops.Load()
+}
 
 // WorkerPool 是一个简单的 goroutine 池,用于分担 Router.Route 调用。
 type WorkerPool struct {
@@ -54,7 +63,8 @@ func (wp *WorkerPool) Submit(task func()) {
 	select {
 	case wp.tasks <- task:
 	default:
-		log.Printf("[gnet] worker pool full, dropping message")
+		gnetPoolDrops.Add(1)
+		slog.Warn("gnet worker pool full, dropping message")
 	}
 }
 

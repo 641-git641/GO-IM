@@ -39,6 +39,7 @@ type StabilityConfig struct {
 	ShutdownTimeout  Duration `json:"shutdown_timeout"`   // 例如 "30s"
 	PprofEnabled     bool     `json:"pprof_enabled"`      // false = 不启用调试端点
 	PprofAddr        string   `json:"pprof_addr"`         // 例如 "localhost:6060"
+	MetricsEnabled   bool     `json:"metrics_enabled"`    // false = 不暴露 /metrics 端点
 }
 
 // Config 汇总所有配置值。
@@ -275,6 +276,7 @@ func Default() *Config {
 			ShutdownTimeout:  Duration(30 * time.Second),
 			PprofEnabled:     false,
 			PprofAddr:        "localhost:6060",
+			MetricsEnabled:   true,
 		},
 		AdminUIDs: []string{},
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 
 	"github.com/im/api/proto"
 	"github.com/im/internal/mq"
+	"github.com/im/internal/observability"
 	"github.com/im/internal/pkg/snowflake"
 	"github.com/im/internal/repo"
 	pbproto "google.golang.org/protobuf/proto"
@@ -42,6 +44,9 @@ type Router struct {
 
 	// 好友关系管理(nil = 好友系统禁用)。
 	friendStore repo.FriendStore // MySQL 禁用时为 nil
+
+	// Prometheus 指标记录器(nil = 未接入,所有指标调用为 no-op)。
+	metrics *observability.Metrics
 
 	// 异步持久化的固定 worker 池。
 	// persistTasks 是待持久化任务队列(有缓冲),persistDone 在 Stop 时关闭。
@@ -176,6 +181,11 @@ func NewRouter(clients ClientRegistry, offline OfflineStore, snow *snowflake.Gen
 	return r
 }
 
+// SetMetrics 注入 Prometheus 指标记录器(nil 安全 —— 不接线时所有记录调用为 no-op)。
+func (r *Router) SetMetrics(m *observability.Metrics) {
+	r.metrics = m
+}
+
 // persistWorker 常驻消费持久化任务队列。worker 总数固定,
 // 不会随消息吞吐增长 —— 这是避免 goroutine 无限堆积的关键。
 func (r *Router) persistWorker() {
@@ -199,8 +209,10 @@ func (r *Router) doPersist(task persistTask) {
 	}
 	if r.msgStore != nil {
 		if err := r.msgStore.Save(task.ctx, msg); err != nil {
-			log.Printf("[router] mysql save FAIL for msgId=%d: %v", msg.MsgId, err)
+			r.metrics.RecordPersistFail()
+			slog.Error("mysql save failed", "msgId", msg.MsgId, "error", err)
 		} else {
+			r.metrics.RecordPersistSuccess()
 			log.Printf("[router] mysql save OK for msgId=%d", msg.MsgId)
 		}
 	}
@@ -269,6 +281,24 @@ func (r *Router) checkRateLimit(uid string) bool {
 	return false
 }
 
+// RateLimitStats 返回限流器累计的放行/拒绝消息数(供 /metrics 暴露)。
+func (r *Router) RateLimitStats() (allowed, rejected int64) {
+	r.rateLimitMu.Lock()
+	defer r.rateLimitMu.Unlock()
+	if r.rateLimit != nil {
+		return r.rateLimit.Allowed(), r.rateLimit.Rejected()
+	}
+	return 0, 0
+}
+
+// DedupMarks 返回去重缓存累计标记的消息数(供 /metrics 暴露)。
+func (r *Router) DedupMarks() int64 {
+	if r.dedup != nil {
+		return r.dedup.Marks()
+	}
+	return 0
+}
+
 // persistAsync 将消息异步持久化到 Kafka 或 MySQL。
 // 它是非阻塞的尽力而为操作:把消息副本提交到固定 worker 池的任务队列,
 // 队列满(背压)时丢弃并记录,绝不阻塞热路径,也不随吞吐增长创建 goroutine。
@@ -288,6 +318,7 @@ func (r *Router) persistAsync(ctx context.Context, msg *proto.Message) {
 		// 已入队,由常驻 worker 异步执行。
 	default:
 		// 队列已满 —— 丢弃。尽力而为:持久化失败比阻塞在线投递好。
+		r.metrics.RecordPersistQueueDrop()
 		log.Printf("[router] persistAsync: queue full, dropping msgId=%d (persistence best-effort)", msg.MsgId)
 	}
 }
@@ -300,6 +331,8 @@ func (r *Router) Route(ctx context.Context, sender *Client, msg *proto.Message) 
 		log.Printf("[router] invalid message from %s: %v (cmd=%d)", sender.UID, err, msg.Cmd)
 		return
 	}
+
+	r.metrics.RecordCommand(msg.Cmd)
 
 	switch msg.Cmd {
 	case proto.CmdNone:
@@ -411,7 +444,8 @@ func (r *Router) handleRecall(ctx context.Context, sender *Client, msg *proto.Me
 	target := r.clients.Get(ctx, msg.To)
 	if target != nil {
 		if err := target.Send(msg); err != nil {
-			log.Printf("[router] recall send to %s failed, storing offline: %v", msg.To, err)
+			r.metrics.RecordDeliveryFailure()
+			slog.Error("recall send failed, storing offline", "to", msg.To, "error", err)
 			r.offline.StoreOffline(ctx, msg.To, msg)
 		}
 		return
@@ -433,6 +467,11 @@ func (r *Router) sendRecallError(sender *Client, reason string) {
 }
 
 func (r *Router) handleChat(ctx context.Context, sender *Client, msg *proto.Message) {
+	// 指标:记录收到的消息,并为投递延迟计时(仅 NeedAck 消息在 ACK 回写时结算)。
+	chatType := observability.ChatTypeStr(msg)
+	r.metrics.RecordMessagesReceived(chatType)
+	start := time.Now()
+
 	// --- 去重检查 ---
 	if msg.Seq > 0 {
 		if isDup, existingMsgID := r.dedup.IsDuplicate(sender.UID, msg.Seq); isDup {
@@ -447,6 +486,7 @@ func (r *Router) handleChat(ctx context.Context, sender *Client, msg *proto.Mess
 				}
 				sender.Send(ack)
 			}
+			r.metrics.RecordDuplicateDropped()
 			log.Printf("[router] duplicate message seq=%d from=%s — ACK replayed", msg.Seq, sender.UID)
 			return
 		}
@@ -460,7 +500,7 @@ func (r *Router) handleChat(ctx context.Context, sender *Client, msg *proto.Mess
 
 	// --- 限流 ---
 	if r.checkRateLimit(sender.UID) {
-		log.Printf("[router] rate limited uid=%s", sender.UID)
+		slog.Warn("rate limited", "uid", sender.UID)
 		return
 	}
 
@@ -484,11 +524,15 @@ func (r *Router) handleChat(ctx context.Context, sender *Client, msg *proto.Mess
 			if err := target.Send(msg); err != nil {
 				// 发送失败(缓冲区满)—— 转存离线,但暂不标记,
 				// 以便客户端重试在线投递。
-				log.Printf("[router] send failed for %s, storing offline: %v", msg.To, err)
+				r.metrics.RecordDeliveryFailure()
+				slog.Error("chat send failed, storing offline", "to", msg.To, "error", err, "msgId", msg.MsgId)
 				r.offline.StoreOffline(ctx, msg.To, msg)
-			} else if msg.Seq > 0 {
-				// 在线投递成功 —— 可以安全标记。
-				r.dedup.Mark(sender.UID, msg.Seq, msg.MsgId)
+			} else {
+				r.metrics.RecordMessageDelivered(chatType)
+				// 在线投递成功 —— 可以安全标记(Seq 为 0 时不标记)。
+				if msg.Seq > 0 {
+					r.dedup.Mark(sender.UID, msg.Seq, msg.MsgId)
+				}
 			}
 		} else {
 			// 目标不在本地在线 —— 路由或转存离线。
@@ -529,6 +573,7 @@ func (r *Router) handleChat(ctx context.Context, sender *Client, msg *proto.Mess
 			Timestamp: time.Now().UnixMilli(),
 		}
 		sender.Send(ack)
+		r.metrics.RecordDeliveredDuration(chatType, time.Since(start))
 	}
 
 	r.persistAsync(ctx, msg)
@@ -596,10 +641,13 @@ func (r *Router) fanoutGroup(ctx context.Context, sender *Client, msg *proto.Mes
 
 		target := r.clients.Get(ctx, memberUID)
 		if target != nil {
+			r.metrics.RecordGroupFanoutSend()
 			if err := target.Send(msg); err != nil {
-				log.Printf("[router] group chat: send to %s failed, storing offline: %v", memberUID, err)
+				r.metrics.RecordDeliveryFailure()
+				slog.Error("group chat send failed, storing offline", "to", memberUID, "error", err)
 				r.offline.StoreOffline(ctx, memberUID, msg)
 			} else {
+				r.metrics.RecordMessageDelivered("group")
 				delivered++
 			}
 		} else {
@@ -625,10 +673,13 @@ func (r *Router) fanoutGroupWithMembers(ctx context.Context, sender *Client, msg
 
 		target := r.clients.Get(ctx, memberUID)
 		if target != nil {
+			r.metrics.RecordGroupFanoutSend()
 			if err := target.Send(msg); err != nil {
-				log.Printf("[router] group chat: send to %s failed, storing offline: %v", memberUID, err)
+				r.metrics.RecordDeliveryFailure()
+				slog.Error("group chat send failed, storing offline", "to", memberUID, "error", err)
 				r.offline.StoreOffline(ctx, memberUID, msg)
 			} else {
+				r.metrics.RecordMessageDelivered("group")
 				delivered++
 			}
 		} else {

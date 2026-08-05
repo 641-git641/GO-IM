@@ -1,4 +1,4 @@
-# IM 项目 — 生产环境 Docker Compose(2C2G 最小栈,7 个服务)
+# IM 项目 — 生产环境 Docker Compose(2C2G 最小栈,8 个服务)
 #
 # 与开发环境 (docker-compose.yml) 的区别：
 #   1. 不对外暴露内部服务端口（MySQL、Redis、MinIO、Gateway）
@@ -7,6 +7,7 @@
 #   4. 省略 Kafka + Logic：网关直连 MySQL 异步持久化（router.doPersist 双路径），
 #      历史/群聊/搜索/未读全部可用；换大服务器可恢复完整形态
 #   5. 全部服务带 mem_limit，适配 2GB 内存云服务器
+#   6. 新增 alloy 服务（Grafana Cloud 指标采集 agent，可选 —— 见服务注释）
 #
 # 启动前：先运行 deploy/init-ssl.sh 获取 SSL 证书
 # 启动:  docker-compose -f docker-compose.prod.yml up -d
@@ -144,6 +145,29 @@ services:
       - ./deploy/certbot/conf:/etc/letsencrypt
     # 每 12 小时检查一次证书续期
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done;'"
+    restart: unless-stopped
+
+  # =========================================================================
+  # 可观测性 —— Grafana Cloud 指标采集 agent(可选)
+  # =========================================================================
+  # 抓取 gateway:8080/metrics(compose 内网),经 Prometheus remote-write 推送
+  # 到 Grafana Cloud 免费版。未配置 GRAFANA_CLOUD_URL/USER/TOKEN 时 alloy
+  # 无法建立 remote-write 目标,会报错重启循环 —— 但不影响主栈,CD 健康检查
+  # 只查 gateway /health。配置 3 个 secret 后 CD 重跑即恢复。
+  # 接入步骤(一次性):注册 Grafana Cloud 免费账号 → Prometheus 实例的
+  # Remote Write Endpoint / 实例 ID / token → 填入 GitHub secrets。
+  alloy:
+    image: grafana/alloy:latest
+    container_name: im-alloy
+    mem_limit: 96m
+    environment:
+      GRAFANA_CLOUD_URL: ${GRAFANA_CLOUD_URL:-}
+      GRAFANA_CLOUD_USER: ${GRAFANA_CLOUD_USER:-}
+      GRAFANA_CLOUD_TOKEN: ${GRAFANA_CLOUD_TOKEN:-}
+    volumes:
+      - ./deploy/alloy.config.alloy:/etc/alloy/config.alloy:ro
+    depends_on:
+      - gateway
     restart: unless-stopped
 
 # =========================================================================

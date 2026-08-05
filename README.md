@@ -360,7 +360,7 @@ message Message {
 
 生产编排 [docker-compose.prod.yml](docker-compose.prod.yml)：仅 `proxy`（nginx + SSL 终止）对外暴露 80/443，内部服务（MySQL / Redis / MinIO / Gateway / Frontend）走 Docker 内网；`certbot` 每 12h 自动续期证书。
 
-> **2C2G 最小栈**：为适配 2GB 内存云服务器，生产形态省略了 Kafka 与 Logic——网关直连 MySQL 异步持久化（`router.doPersist` 双路径），历史 / 群聊 / 搜索 / 未读不受影响，基线内存约 500-600MB，全部服务带 `mem_limit`（上限合计 ~1.5G）。换大服务器可恢复完整形态（加回 kafka / logic 服务与 `config.prod.json` 的对应配置）。
+> **2C2G 最小栈**：为适配 2GB 内存云服务器，生产形态省略了 Kafka 与 Logic——网关直连 MySQL 异步持久化（`router.doPersist` 双路径），历史 / 群聊 / 搜索 / 未读不受影响，基线内存约 500-600MB，全部服务带 `mem_limit`（上限合计 ~1.6G，含可观测 agent alloy）。换大服务器可恢复完整形态（加回 kafka / logic 服务与 `config.prod.json` 的对应配置）。
 
 ### 服务器前置
 
@@ -414,6 +414,44 @@ curl -I https://your-domain.com/health
 - `admin_uids` 仅配置可信账号
 - SSL 证书首次由 `init-ssl.sh` 获取，之后 certbot 自动续期
 
+## 可观测性
+
+网关默认暴露 Prometheus `/metrics` 端点（`stability.metrics_enabled: true`），由 `prometheus/client_golang` 聚合 **20+ 核心指标**（`im_` 前缀，另有 `go_*` 运行时指标），覆盖连接数、消息吞吐、投递延迟、持久化成败、限流拒绝与命令分布。
+
+### 本地验证
+
+```bash
+curl -s localhost:8080/metrics | grep '^im_'   # im_online_connections / im_messages_received_total / ...
+```
+
+### 核心指标
+
+| 指标 | 含义 |
+|------|------|
+| `im_online_connections` | 在线连接数（WebSocket + gnet TCP） |
+| `im_messages_received_total{chat_type}` / `im_messages_delivered_total{chat_type}` | 收 / 投递消息数 |
+| `im_message_delivery_duration_seconds{chat_type}` | 收到 → ACK 的投递延迟（P50 / P99） |
+| `im_delivery_failures_total` | 投递失败转存离线 |
+| `im_rate_limit_allowed_total` / `im_rate_limit_rejected_total` | 限流放行 / 拒绝 |
+| `im_persist_success_total` / `im_persist_fail_total` / `im_persist_queue_drop_total` | 异步持久化成败与背压 |
+| `im_commands_total{cmd}` | 命令分布 |
+| `im_duplicate_dropped_total` / `im_group_fanout_sends_total` / `im_dedup_marks_total` / `im_gnet_pool_drop_total` | 去重 / 群扇出 / 队列丢弃 |
+
+### Grafana Cloud 接入（可选）
+
+生产栈含 `alloy` 服务（[deploy/alloy.config.alloy](deploy/alloy.config.alloy)），抓取 `gateway:8080/metrics`（compose 内网）并 remote-write 到 Grafana Cloud 免费版：
+
+1. 注册 [Grafana Cloud 免费账号](https://grafana.com/products/cloud/) → 创建 Prometheus 实例，记下 **Remote Write Endpoint / 实例 ID / token**
+2. 在 GitHub 仓库 Settings → Secrets 加 3 个 secret：`GRAFANA_CLOUD_URL` / `GRAFANA_CLOUD_USER`（实例 ID）/ `GRAFANA_CLOUD_TOKEN`
+3. 推送 main（或手动触发 CD）重部署，alloy 自动开始上报
+4. 在 Grafana Cloud 导入 [deploy/grafana-dashboard.json](deploy/grafana-dashboard.json)，数据源选 Prometheus
+
+> 未配置 3 个 secrets 时 alloy 空转，不影响主栈与 CD 健康检查。
+
+### 结构化日志
+
+两个 main（`cmd/gateway`、`cmd/logic`）已初始化 `log/slog`（JSON 输出到 stdout）；热路径关键日志（投递失败、持久化失败、限流、panic、gnet 队列满、集群不健康）为结构化 `slog.Error/Warn/Info`。其余 `log.Printf` 保持文本格式（混合输出是过渡态）。
+
 ## 技术栈
 
 | 层级 | 技术 |
@@ -432,6 +470,7 @@ curl -I https://your-domain.com/health
 | 反向代理 | nginx（SPA 静态服务 + API 代理） |
 | 容器化 | Docker + Docker Compose |
 | 持续集成 | GitHub Actions（6 jobs） |
+| 可观测性 | Prometheus（client_golang）+ Grafana Cloud（可选） |
 
 ## 文档
 

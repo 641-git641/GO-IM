@@ -108,7 +108,8 @@
         "http_idle_timeout": "120s",
         "shutdown_timeout": "30s",
         "pprof_enabled": false,
-        "pprof_addr": "localhost:6060"
+        "pprof_addr": "localhost:6060",
+        "metrics_enabled": true
     },
 
     "jwt": {

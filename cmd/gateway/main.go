@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	_ "net/http/pprof" // 在 DefaultServeMux 上注册 pprof 处理器
 	"os"
@@ -14,6 +15,7 @@ import (
 	"github.com/im/configs"
 	"github.com/im/internal/gateway"
 	"github.com/im/internal/mq"
+	"github.com/im/internal/observability"
 	"github.com/im/internal/pkg/jwt"
 	"github.com/im/internal/pkg/snowflake"
 	"github.com/im/internal/repo"
@@ -35,6 +37,7 @@ type App struct {
 	clusterMgr    *gateway.ClusterManager // 多网关禁用时为 nil
 	pprofServer   *http.Server            // pprof 禁用时为 nil
 	router        *gateway.Router         // 用于清理（去重缓存、限流器）
+	metrics       *observability.Metrics  // Prometheus 指标记录器
 }
 
 // NewApp 根据配置初始化所有应用组件。
@@ -150,6 +153,16 @@ func NewApp(cfg *configs.Config) (*App, error) {
 	if cfg.Stability.MaxConnections > 0 {
 		hub.SetMaxConnections(cfg.Stability.MaxConnections)
 	}
+
+	// 构建 Prometheus 指标记录器并注入 Router。
+	// 实时状态回调在 /metrics 被抓取时惰性求值(线程安全)。
+	metrics := observability.NewMetrics(observability.Options{
+		OnlineConnections: func() int { return hub.Count(context.Background()) },
+		RateLimitStats:    func() (int64, int64) { return router.RateLimitStats() },
+		DedupMarks:        func() int64 { return router.DedupMarks() },
+		GnetPoolDrops:     func() int64 { return gateway.GnetPoolDrops() },
+	})
+	router.SetMetrics(metrics)
 
 	// --- 多网关水平扩展 ---
 	var grpcForwarder *gateway.GrpcForwarder
@@ -311,6 +324,7 @@ func NewApp(cfg *configs.Config) (*App, error) {
 		grpcForwarder: grpcForwarder,
 		clusterMgr:    clusterMgr,
 		router:        router,
+		metrics:       metrics,
 	}, nil
 }
 
@@ -425,6 +439,11 @@ func (app *App) Run(ctx context.Context) error {
 
 	mux.HandleFunc("/health", app.Server.HandleHealth)
 
+	// Prometheus 指标端点(默认开启;经 Recovery 包裹,抓取异常不会拖垮服务器)。
+	if app.Config.Stability.MetricsEnabled {
+		mux.Handle("/metrics", app.metrics.Handler())
+	}
+
 	// 管理员监控与管理端点。
 	mux.HandleFunc("/admin/stats", app.Server.HandleAdminStats)
 	mux.HandleFunc("/admin/users", app.Server.HandleAdminUsers)
@@ -515,6 +534,11 @@ func (app *App) Run(ctx context.Context) error {
 }
 
 func main() {
+	// 结构化日志:JSON 输出到 stdout;剩余 log.Printf 经 SetOutput 同流,
+	// 避免 docker 日志 stdout/stderr 分家。
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	log.SetOutput(os.Stdout)
+
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
 		configPath = "configs/config.json"

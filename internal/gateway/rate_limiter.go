@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -14,6 +15,10 @@ type RateLimiter struct {
 	interval  time.Duration // 清理间隔
 	done      chan struct{}
 	closeOnce sync.Once
+
+	// 累计计数(供 /metrics 只读,原子操作,与限流互斥锁无关)。
+	allowed  atomic.Int64 // 放行消息数
+	rejected atomic.Int64 // 拒绝消息数
 }
 
 type rateBucket struct {
@@ -77,6 +82,7 @@ func (rl *RateLimiter) Allow(uid string) bool {
 	now := time.Now()
 	if !ok {
 		rl.buckets[uid] = &rateBucket{tokens: float64(rl.burst) - 1, lastTime: now}
+		rl.allowed.Add(1)
 		return true
 	}
 
@@ -88,7 +94,19 @@ func (rl *RateLimiter) Allow(uid string) bool {
 	b.lastTime = now
 	if b.tokens >= 1 {
 		b.tokens--
+		rl.allowed.Add(1)
 		return true
 	}
+	rl.rejected.Add(1)
 	return false
+}
+
+// Allowed 返回累计放行消息数(原子读取,供 /metrics 暴露)。
+func (rl *RateLimiter) Allowed() int64 {
+	return rl.allowed.Load()
+}
+
+// Rejected 返回累计拒绝消息数(原子读取,供 /metrics 暴露)。
+func (rl *RateLimiter) Rejected() int64 {
+	return rl.rejected.Load()
 }

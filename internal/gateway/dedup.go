@@ -3,7 +3,7 @@ package gateway
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -91,7 +91,7 @@ func (d *DedupCache) redisWorker() {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			if err := d.redis.Set(ctx, d.redisKeyPF+t.key, t.msgID, t.expire).Err(); err != nil {
 				// 非致命 —— 去重检测是尽力而为的。
-				log.Printf("[dedup] redis set error: %v", err)
+				slog.Error("dedup redis set error", "error", err)
 			}
 			cancel()
 		}
@@ -167,9 +167,14 @@ func (d *DedupCache) Mark(from string, seq int64, msgID int64) {
 			// 已入队,由常驻 worker 异步执行。
 		default:
 			// 队列满 —— 丢弃。去重持久化是尽力而为的。
-			log.Printf("[dedup] redis queue full, dropping key=%s (persistence best-effort)", key)
+			slog.Warn("dedup redis queue full, dropping (best-effort)", "key", key)
 		}
 	}
+}
+
+// Marks 返回本进程累计标记的消息数(原子读取,供 /metrics 暴露)。
+func (d *DedupCache) Marks() int64 {
+	return d.marks.Load()
 }
 
 // cleanupLoop 定期淘汰超过 TTL 的记录。

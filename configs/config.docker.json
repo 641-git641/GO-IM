@@ -92,7 +92,8 @@
         "http_write_timeout": "10s",
         "http_idle_timeout": "120s",
         "shutdown_timeout": "30s",
-        "pprof_enabled": false
+        "pprof_enabled": false,
+        "metrics_enabled": true
     },
 
     "jwt": {

@@ -11,6 +11,7 @@ package main
 import (
 	"context"
 	"log"
+	"log/slog"
 	"net"
 	"os"
 	"os/signal"
@@ -26,6 +27,9 @@ import (
 )
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	log.SetOutput(os.Stdout)
+
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
 		configPath = "configs/config.json"
