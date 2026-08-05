@@ -64,3 +64,7 @@ func (t *gnetTransport) Write(p []byte) error {
 		return nil
 	})
 }
+
+// Ping 为 gnet TCP 传输的空操作:TCP 保活使用应用层 CmdHeartbeat,
+// 不存在 WebSocket 那样的传输层 Ping 帧。
+func (t *gnetTransport) Ping() error { return nil }

@@ -7,4 +7,6 @@ type Transport interface {
 	Close() error
 	// Write 在连接上发送原始字节。
 	Write(p []byte) error
+	// Ping 发送传输层保活信号(WebSocket 为 Ping 帧,gnet TCP 为空操作)。
+	Ping() error
 }

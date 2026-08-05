@@ -1,20 +1,18 @@
 package main
 
 // 本文件包含针对 gnet TCP 传输的附加集成测试。
-// 它作为 main 包的一部分编译。
+// 它作为 main 包的一部分编译。客户端辅助函数复用 bench/kit。
 
 import (
 	"context"
-	"encoding/binary"
-	"io"
 	"net"
 	"net/http"
 	"testing"
 	"time"
 
 	"github.com/im/api/proto"
+	"github.com/im/bench/kit"
 	"github.com/im/configs"
-	pb "google.golang.org/protobuf/proto"
 )
 
 // ---------- gnet TCP 辅助函数 ----------
@@ -43,14 +41,7 @@ func startTestServerGNet(t *testing.T) (*App, func()) {
 
 	// 等待服务器就绪（HTTP 和 gnet 均需就绪）。
 	time.Sleep(500 * time.Millisecond)
-	for i := 0; i < 50; i++ {
-		time.Sleep(100 * time.Millisecond)
-		_, err := http.Get("http://localhost:18080/health")
-		if err == nil {
-			break
-		}
-	}
-	if err != nil {
+	if err := kit.WaitHealthy("http://localhost:18080/health", 5*time.Second); err != nil {
 		cancel()
 		t.Fatalf("server did not start: %v", err)
 	}
@@ -78,63 +69,6 @@ func startTestServerGNet(t *testing.T) (*App, func()) {
 	}
 }
 
-// connectTCP 拨号连接 gnet TCP 端口。
-func connectTCP(t *testing.T, addr string) net.Conn {
-	t.Helper()
-	conn, err := net.Dial("tcp", addr)
-	if err != nil {
-		t.Fatalf("TCP dial to %s: %v", addr, err)
-	}
-	return conn
-}
-
-// readTCPFrame 从 TCP 连接读取一条带帧的 protobuf 消息。
-func readTCPFrame(t *testing.T, conn net.Conn) *proto.Message {
-	t.Helper()
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-
-	// 读取 4 字节长度头。
-	header := make([]byte, 4)
-	if _, err := io.ReadFull(conn, header); err != nil {
-		t.Fatalf("read TCP header: %v", err)
-	}
-	length := binary.BigEndian.Uint32(header)
-	if length > 65536 {
-		t.Fatalf("TCP frame too large: %d", length)
-	}
-
-	// 读取载荷。
-	payload := make([]byte, length)
-	if _, err := io.ReadFull(conn, payload); err != nil {
-		t.Fatalf("read TCP payload (%d bytes): %v", length, err)
-	}
-
-	msg := &proto.Message{}
-	if err := pb.Unmarshal(payload, msg); err != nil {
-		t.Fatalf("unmarshal TCP frame: %v", err)
-	}
-	return msg
-}
-
-// writeTCPFrame 将 proto.Message 作为带帧的 TCP 消息发送。
-func writeTCPFrame(t *testing.T, conn net.Conn, msg *proto.Message) {
-	t.Helper()
-	data, err := pb.Marshal(msg)
-	if err != nil {
-		t.Fatalf("marshal TCP message: %v", err)
-	}
-
-	// 4 字节大端长度前缀 + 载荷。
-	header := make([]byte, 4)
-	binary.BigEndian.PutUint32(header, uint32(len(data)))
-	frame := append(header, data...)
-
-	conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-	if _, err := conn.Write(frame); err != nil {
-		t.Fatalf("write TCP frame: %v", err)
-	}
-}
-
 // ---------- gnet TCP 集成测试 ----------
 
 // TestIntegrationGNetEndToEnd 测试完整的 gnet TCP 流程：连接 -> 登录 -> 聊天 -> ACK。
@@ -143,40 +77,48 @@ func TestIntegrationGNetEndToEnd(t *testing.T) {
 	defer cleanup()
 
 	// 通过 HTTP 获取 JWT 令牌（同一台服务器）。
-	aliceToken, aliceUID := login(t, "alice_tcp", "Alice")
-	bobToken, bobUID := login(t, "bob_tcp", "Bob")
+	aliceToken, aliceUID, err := kit.LoginDev(testLoginURL, "alice_tcp", "Alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bobToken, bobUID, err := kit.LoginDev(testLoginURL, "bob_tcp", "Bob")
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Logf("Tokens: alice=%s bob=%s", aliceUID, bobUID)
 
 	// Alice 通过 gnet TCP 连接。
-	aliceConn := connectTCP(t, "localhost:18081")
+	aliceConn, err := kit.ConnectTCP(testTCPAddr)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer aliceConn.Close()
 
 	// Bob 通过 WebSocket 连接（混合传输测试）。
-	bobConn := connectWS(t, bobToken)
+	bobConn, err := kit.ConnectWS(testWSURL, bobToken)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer bobConn.Close()
 
 	// 排空 Bob 的登录响应（WebSocket）。
-	bobLoginResp := readMessage(t, bobConn)
-	if bobLoginResp.Cmd != proto.CmdLoginResp {
-		t.Fatalf("Bob: expected login response, got cmd=%d", bobLoginResp.Cmd)
+	if _, err := bobConn.DrainLoginResp(0); err != nil {
+		t.Fatal(err)
 	}
 	t.Log("Bob logged in via WebSocket")
 
 	// Alice 通过 TCP 发送登录帧。
-	writeTCPFrame(t, aliceConn, &proto.Message{
-		Cmd:     proto.CmdLogin,
-		Content: aliceToken,
-	})
-
-	// Alice 通过 TCP 读取登录响应。
-	aliceLoginResp := readTCPFrame(t, aliceConn)
+	aliceLoginResp, err := aliceConn.Login(aliceToken, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if aliceLoginResp.Cmd != proto.CmdLoginResp {
 		t.Fatalf("Alice: expected CmdLoginResp, got cmd=%d", aliceLoginResp.Cmd)
 	}
 	t.Logf("Alice logged in via TCP: uid=%s", aliceLoginResp.To)
 
 	// Alice 通过 TCP 向 Bob 发送聊天消息。
-	writeTCPFrame(t, aliceConn, &proto.Message{
+	if err := aliceConn.WriteFrame(&proto.Message{
 		Cmd:      proto.CmdChat,
 		To:       bobUID,
 		ChatType: proto.ChatTypeSingle,
@@ -184,11 +126,16 @@ func TestIntegrationGNetEndToEnd(t *testing.T) {
 		Content:  "Hello from gnet TCP!",
 		NeedAck:  true,
 		Seq:      1,
-	})
+	}, 0); err != nil {
+		t.Fatal(err)
+	}
 	t.Log("Alice sent chat via TCP")
 
 	// Bob 通过 WebSocket 收到消息。
-	received := readMessage(t, bobConn)
+	received, err := bobConn.ReadMessage(0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if received.Cmd != proto.CmdChat {
 		t.Fatalf("expected chat cmd, got %d", received.Cmd)
 	}
@@ -204,7 +151,10 @@ func TestIntegrationGNetEndToEnd(t *testing.T) {
 	t.Logf("Bob received via WS: msgId=%d content=%s", received.MsgId, received.Content)
 
 	// Alice 通过 TCP 收到 ACK。
-	ack := readTCPFrame(t, aliceConn)
+	ack, err := aliceConn.ReadFrame(0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if ack.Cmd != proto.CmdAck {
 		t.Fatalf("expected ACK cmd, got %d", ack.Cmd)
 	}
@@ -219,26 +169,34 @@ func TestIntegrationGNetOfflineMessage(t *testing.T) {
 	_, cleanup := startTestServerGNet(t)
 	defer cleanup()
 
-	aliceToken, aliceUID := login(t, "alice_gnet_off", "Alice")
-	bobToken, bobUID := login(t, "bob_gnet_off", "Bob")
+	aliceToken, aliceUID, err := kit.LoginDev(testLoginURL, "alice_gnet_off", "Alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bobToken, bobUID, err := kit.LoginDev(testLoginURL, "bob_gnet_off", "Bob")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Alice 通过 gnet TCP 连接。
-	aliceConn := connectTCP(t, "localhost:18081")
+	aliceConn, err := kit.ConnectTCP(testTCPAddr)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer aliceConn.Close()
 
 	// Alice 通过 TCP 登录。
-	writeTCPFrame(t, aliceConn, &proto.Message{
-		Cmd:     proto.CmdLogin,
-		Content: aliceToken,
-	})
-	aliceLoginResp := readTCPFrame(t, aliceConn)
+	aliceLoginResp, err := aliceConn.Login(aliceToken, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if aliceLoginResp.Cmd != proto.CmdLoginResp {
 		t.Fatalf("Alice: expected CmdLoginResp, got cmd=%d", aliceLoginResp.Cmd)
 	}
 	t.Log("Alice logged in via TCP")
 
 	// Alice 通过 TCP 向离线的 Bob 发送消息。
-	writeTCPFrame(t, aliceConn, &proto.Message{
+	if err := aliceConn.WriteFrame(&proto.Message{
 		Cmd:      proto.CmdChat,
 		To:       bobUID,
 		ChatType: proto.ChatTypeSingle,
@@ -246,37 +204,47 @@ func TestIntegrationGNetOfflineMessage(t *testing.T) {
 		Content:  "Offline TCP message",
 		NeedAck:  true,
 		Seq:      1,
-	})
+	}, 0); err != nil {
+		t.Fatal(err)
+	}
 
 	// Alice 收到 ACK（消息已离线存储）。
-	ack := readTCPFrame(t, aliceConn)
+	ack, err := aliceConn.ReadFrame(0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if ack.Cmd != proto.CmdAck {
 		t.Fatalf("expected ACK, got cmd=%d", ack.Cmd)
 	}
 	t.Log("Alice got ACK via TCP")
 
 	// Bob 通过 gnet TCP 连接。
-	bobConn := connectTCP(t, "localhost:18081")
+	bobConn, err := kit.ConnectTCP(testTCPAddr)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer bobConn.Close()
 
 	// Bob 通过 TCP 登录。
-	writeTCPFrame(t, bobConn, &proto.Message{
-		Cmd:     proto.CmdLogin,
-		Content: bobToken,
-	})
-	bobLoginResp := readTCPFrame(t, bobConn)
+	bobLoginResp, err := bobConn.Login(bobToken, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if bobLoginResp.Cmd != proto.CmdLoginResp {
 		t.Fatalf("Bob: expected CmdLoginResp, got cmd=%d", bobLoginResp.Cmd)
 	}
 	t.Log("Bob logged in via TCP")
 
 	// Bob 通过 TCP 请求离线消息。
-	writeTCPFrame(t, bobConn, &proto.Message{
-		Cmd: proto.CmdOffline,
-	})
+	if err := bobConn.WriteFrame(&proto.Message{Cmd: proto.CmdOffline}, 0); err != nil {
+		t.Fatal(err)
+	}
 
 	// Bob 通过 TCP 收到离线消息。
-	received := readTCPFrame(t, bobConn)
+	received, err := bobConn.ReadFrame(0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if received.Cmd != proto.CmdChat {
 		t.Fatalf("expected chat cmd, got %d", received.Cmd)
 	}
@@ -294,35 +262,38 @@ func TestIntegrationGNetHeartbeat(t *testing.T) {
 	_, cleanup := startTestServerGNet(t)
 	defer cleanup()
 
-	token, uid := login(t, "hb_tcp", "Heartbeat")
+	token, uid := mustLogin(t, "hb_tcp", "Heartbeat")
 	_ = uid
 
-	conn := connectTCP(t, "localhost:18081")
+	conn, err := kit.ConnectTCP(testTCPAddr)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer conn.Close()
 
 	// 通过 TCP 登录。
-	writeTCPFrame(t, conn, &proto.Message{
-		Cmd:     proto.CmdLogin,
-		Content: token,
-	})
-	loginResp := readTCPFrame(t, conn)
+	loginResp, err := conn.Login(token, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if loginResp.Cmd != proto.CmdLoginResp {
 		t.Fatalf("expected CmdLoginResp, got cmd=%d", loginResp.Cmd)
 	}
 	t.Log("Logged in via TCP")
 
 	// 通过 TCP 发送心跳。
-	writeTCPFrame(t, conn, &proto.Message{
-		Cmd: proto.CmdHeartbeat,
-	})
+	if err := conn.SendHeartbeat(0); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("Heartbeat response via TCP ✓")
+}
 
-	// 通过 TCP 接收心跳响应。
-	hbResp := readTCPFrame(t, conn)
-	if hbResp.Cmd != proto.CmdHeartbeat {
-		t.Fatalf("expected CmdHeartbeat response, got cmd=%d", hbResp.Cmd)
+// mustLogin 登录并返回 JWT 令牌,失败即终止测试。
+func mustLogin(t *testing.T, uid, username string) (token, returnedUID string) {
+	t.Helper()
+	token, returnedUID, err := kit.LoginDev(testLoginURL, uid, username)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if hbResp.MsgId == 0 {
-		t.Error("expected non-zero MsgID in heartbeat response")
-	}
-	t.Logf("Heartbeat response via TCP: msgId=%d", hbResp.MsgId)
+	return token, returnedUID
 }

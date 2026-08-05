@@ -12,11 +12,6 @@ import (
 	pb "google.golang.org/protobuf/proto"
 )
 
-const (
-	// 允许向对端写入消息的时间。
-	writeWait = 10 * time.Second
-)
-
 // HandleWS 将 HTTP 升级为 WebSocket 并启动客户端读写循环。
 func (s *Server) HandleWS(w http.ResponseWriter, r *http.Request) {
 	// 从查询参数中提取 JWT 令牌
@@ -79,9 +74,10 @@ func wsReadPump(ctx context.Context, conn *websocket.Conn, client *Client, route
 	})
 
 	// 启动 WebSocket ping 循环(取代 writePump 的定时器)。
+	// ping 帧经由 client.SendPing → WriteLoop 串行写入,不与数据帧并发写 conn。
 	pingDone := make(chan struct{})
 	defer close(pingDone)
-	go wsPingLoop(conn, time.Duration(cfg.PingPeriod), pingDone, client.closed)
+	go wsPingLoop(client, time.Duration(cfg.PingPeriod), pingDone, client.closed)
 
 	for {
 		_, raw, err := conn.ReadMessage()
@@ -111,8 +107,10 @@ func wsReadPump(ctx context.Context, conn *websocket.Conn, client *Client, route
 	}
 }
 
-// wsPingLoop 定期发送 WebSocket Ping 帧以保活。
-func wsPingLoop(conn *websocket.Conn, period time.Duration, done, closed chan struct{}) {
+// wsPingLoop 定期请求发送 WebSocket Ping 帧以保活。
+// 实际的 Ping 帧由 WriteLoop 串行写入(通过 client.SendPing),
+// 保证写者唯一 —— 直接写 conn 会与 WriteLoop 并发写而 panic。
+func wsPingLoop(client *Client, period time.Duration, done, closed chan struct{}) {
 	ticker := time.NewTicker(period)
 	defer ticker.Stop()
 
@@ -123,11 +121,7 @@ func wsPingLoop(conn *websocket.Conn, period time.Duration, done, closed chan st
 		case <-closed:
 			return
 		case <-ticker.C:
-			conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				log.Printf("[ws] ping error: %v", err)
-				return
-			}
+			client.SendPing()
 		}
 	}
 }

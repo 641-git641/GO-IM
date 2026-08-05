@@ -1,11 +1,11 @@
 {
     "gateway": {
         "http_addr": ":8080",
-        "tcp_addr": ":8081",
+        "tcp_addr": ":18083",
         "transport": "both",
         "heartbeat": "30s",
         "heartbeat_fail": 3,
-        "check_origin": ["http://localhost", "http://localhost:80"],
+        "check_origin": [],
 
         "conn": {
             "pong_wait": "60s",
@@ -16,14 +16,14 @@
         },
 
         "rate_limit": {
-            "enabled": true,
+            "enabled": false,
             "rate": 10,
             "burst": 20,
             "cleanup_interval": "5m"
         },
 
         "redis": {
-            "addr": "redis:6379",
+            "addr": "127.0.0.1:6379",
             "password": "",
             "db": 0
         },
@@ -35,21 +35,21 @@
 
         "mysql": {
             "enabled": true,
-            "dsn": "im:im-dev@tcp(mysql:3306)/im?parseTime=true&charset=utf8mb4"
+            "dsn": "im:im-dev@tcp(127.0.0.1:3307)/im?parseTime=true&charset=utf8mb4"
         },
 
         "auth": {
-            "dev_mode": false
+            "dev_mode": true
         },
 
         "kafka": {
             "enabled": true,
-            "brokers": ["kafka:9093"],
+            "brokers": ["localhost:9094"],
             "topic": "im.message.persist"
         },
 
         "logic": {
-            "addr": "logic:50051",
+            "addr": "localhost:50051",
             "listen_addr": ":50051"
         },
 
@@ -61,7 +61,7 @@
 
         "object_storage": {
             "enabled": true,
-            "endpoint": "minio:9000",
+            "endpoint": "127.0.0.1:9000",
             "access_key": "minioadmin",
             "secret_key": "minioadmin",
             "bucket": "im-files",
@@ -76,13 +76,13 @@
         "persist_concurrency": 64
     },
 
-    "admin_uids": ["SixForOne"],
+    "admin_uids": [],
 
     "logic": {
-        "addr": "logic:50051",
+        "addr": "localhost:50051",
         "listen_addr": ":50051",
-        "mysql": { "enabled": true, "dsn": "im:im-dev@tcp(mysql:3306)/im?parseTime=true&charset=utf8mb4" },
-        "kafka": { "enabled": true, "brokers": ["kafka:9093"], "topic": "im.message.persist" },
+        "mysql": { "enabled": true, "dsn": "im:im-dev@tcp(127.0.0.1:3307)/im?parseTime=true&charset=utf8mb4" },
+        "kafka": { "enabled": true, "brokers": ["localhost:9094"], "topic": "im.message.persist" },
         "worker_id": 2
     },
 
@@ -92,7 +92,8 @@
         "http_write_timeout": "10s",
         "http_idle_timeout": "120s",
         "shutdown_timeout": "30s",
-        "pprof_enabled": false
+        "pprof_enabled": true,
+        "pprof_addr": "localhost:6060"
     },
 
     "jwt": {

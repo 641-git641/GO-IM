@@ -34,6 +34,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("[logic] load config: %v", err)
 	}
+	log.Printf("[logic] configPath=%s brokers=%v", configPath, cfg.Logic.Kafka.Brokers)
 
 	// --- MySQL（Logic 服务必需）---
 	// 如果设置了 logic.mysql 配置则使用它，否则回退到 gateway.mysql。

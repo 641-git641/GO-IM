@@ -25,6 +25,7 @@ type Client struct {
 	transport Transport
 	clients   ClientRegistry
 	send      chan []byte // 出站消息的缓冲通道
+	ping      chan struct{}
 	closed    chan struct{}
 	closeOnce sync.Once
 
@@ -41,6 +42,7 @@ func NewClient(uid, username string, transport Transport, clients ClientRegistry
 		transport:     transport,
 		clients:       clients,
 		send:          make(chan []byte, sendBufSize),
+		ping:          make(chan struct{}, 1),
 		closed:        make(chan struct{}),
 		lastHeartbeat: time.Now(),
 	}
@@ -85,8 +87,19 @@ func (c *Client) Close() {
 	})
 }
 
+// SendPing 请求写循环发送一次传输层保活信号(WebSocket 为 Ping 帧)。
+// 非阻塞:若写循环忙则跳过本次 ping(保活是尽力而为的)。
+func (c *Client) SendPing() {
+	select {
+	case c.ping <- struct{}{}:
+	default:
+	}
+}
+
 // WriteLoop 排空 send 通道并写入 transport。
 // 该 goroutine 取代了旧的 writePump —— 与传输方式无关。
+// 它同时也是唯一的写者 goroutine:数据帧与 ping 控制帧都经由这里串行
+// 写入,避免对同一底层连接并发写(gorilla/websocket 不允许并发写)。
 func (c *Client) WriteLoop() {
 	for {
 		select {
@@ -98,6 +111,11 @@ func (c *Client) WriteLoop() {
 			}
 			if err := c.transport.Write(data); err != nil {
 				log.Printf("[client] write error uid=%s: %v", c.UID, err)
+				return
+			}
+		case <-c.ping:
+			if err := c.transport.Ping(); err != nil {
+				log.Printf("[client] ping error uid=%s: %v", c.UID, err)
 				return
 			}
 		}

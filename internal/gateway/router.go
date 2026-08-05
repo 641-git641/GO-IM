@@ -43,9 +43,14 @@ type Router struct {
 	// 好友关系管理(nil = 好友系统禁用)。
 	friendStore repo.FriendStore // MySQL 禁用时为 nil
 
-	// persistSem 限制并发异步持久化 goroutine 的数量,
-	// 防止高消息吞吐下 goroutine 无限增长。
-	persistSem chan struct{}
+	// 异步持久化的固定 worker 池。
+	// persistTasks 是待持久化任务队列(有缓冲),persistDone 在 Stop 时关闭。
+	// 使用固定数量的 worker goroutine 消费队列,而不是每消息 spawn 一个
+	// goroutine —— 后者在高吞吐下会导致 goroutine 无限堆积(信号量只限制
+	// 并发,不限制排队数)。
+	persistTasks chan persistTask
+	persistDone  chan struct{}
+	persistWG    sync.WaitGroup
 
 	// 可配置的运行参数(原为硬编码常量)。
 	recallWindow int64         // 消息撤回窗口(毫秒)
@@ -53,6 +58,16 @@ type Router struct {
 	searchLimit  int           // 默认搜索结果上限
 	rlCleanup    time.Duration // 限流器过期桶清理间隔
 }
+
+// persistTask 是一次异步持久化的目标(消息的独立副本,可并发读写)。
+type persistTask struct {
+	ctx context.Context // 已剥离取消(WithoutCancel),持久化不随请求取消而丢弃
+	msg *proto.Message
+}
+
+// 持久化任务队列的缓冲容量。缓冲允许短暂积压(背压)但不阻塞热路径;
+// 超过容量时丢弃任务并记录(尽力而为语义)。
+const persistQueueCap = 1024
 
 // SetKafkaProducer 注入用于异步消息持久化的 Kafka 生产者。
 // 为 nil(默认值)时不使用 Kafka。
@@ -139,17 +154,58 @@ func NewRouter(clients ClientRegistry, offline OfflineStore, snow *snowflake.Gen
 	if cfg.DedupTTL <= 0 {
 		cfg.DedupTTL = 5 * time.Minute
 	}
-	return &Router{
+	r := &Router{
 		clients:      clients,
 		offline:      offline,
 		snow:         snow,
 		dedup:        NewDedupCache(cfg.DedupTTL),
 		msgStore:     msgStore,
-		persistSem:   make(chan struct{}, cfg.PersistConcurrency),
+		persistTasks: make(chan persistTask, persistQueueCap),
+		persistDone:  make(chan struct{}),
 		recallWindow: cfg.RecallWindowMs,
 		historyLimit: cfg.HistoryDefaultLimit,
 		searchLimit:  cfg.SearchDefaultLimit,
 		rlCleanup:    cfg.RateLimitCleanup,
+	}
+	// 启动固定数量的持久化 worker。worker 数 = 配置的并发度,
+	// 它们常驻消费任务队列 —— 队列满时新任务被丢弃而非阻塞等待。
+	for i := 0; i < cfg.PersistConcurrency; i++ {
+		r.persistWG.Add(1)
+		go r.persistWorker()
+	}
+	return r
+}
+
+// persistWorker 常驻消费持久化任务队列。worker 总数固定,
+// 不会随消息吞吐增长 —— 这是避免 goroutine 无限堆积的关键。
+func (r *Router) persistWorker() {
+	defer r.persistWG.Done()
+	for {
+		select {
+		case <-r.persistDone:
+			return
+		case task := <-r.persistTasks:
+			r.doPersist(task)
+		}
+	}
+}
+
+// doPersist 执行单次异步持久化(与旧 persistAsync 的 goroutine 体一致)。
+func (r *Router) doPersist(task persistTask) {
+	msg := task.msg
+	if r.kafka != nil {
+		log.Printf("[router] persist: publishing msgId=%d cmd=%d via Kafka", msg.MsgId, msg.Cmd)
+		r.kafka.Publish(task.ctx, msg)
+	}
+	if r.msgStore != nil {
+		if err := r.msgStore.Save(task.ctx, msg); err != nil {
+			log.Printf("[router] mysql save FAIL for msgId=%d: %v", msg.MsgId, err)
+		} else {
+			log.Printf("[router] mysql save OK for msgId=%d", msg.MsgId)
+		}
+	}
+	if r.kafka == nil && r.msgStore == nil {
+		log.Printf("[router] persist: no persistence backend configured (kafka=%v msgStore=%v)", r.kafka != nil, r.msgStore != nil)
 	}
 }
 
@@ -184,7 +240,7 @@ func (r *Router) Search(ctx context.Context, params *repo.SearchParams) (*repo.S
 }
 
 // Stop 优雅地停止 Router 拥有的后台 goroutine
-// (去重缓存清理、限流器清理)。
+// (去重缓存清理、限流器清理、持久化 worker)。
 func (r *Router) Stop() {
 	if r.dedup != nil {
 		r.dedup.Stop()
@@ -194,6 +250,11 @@ func (r *Router) Stop() {
 		r.rateLimit.Stop()
 	}
 	r.rateLimitMu.Unlock()
+
+	// 停止持久化 worker:先关闭 persistDone 通知 worker 退出,
+	// 再关闭任务队列(此时不会有新任务入队 —— Stop 在关闭后调用)。
+	close(r.persistDone)
+	r.persistWG.Wait()
 }
 
 // checkRateLimit 如果用户超出限流则返回 true。
@@ -209,36 +270,25 @@ func (r *Router) checkRateLimit(uid string) bool {
 }
 
 // persistAsync 将消息异步持久化到 Kafka 或 MySQL。
-// 它是非阻塞的尽力而为操作 —— 失败仅记录日志,绝不
-// 传递给调用方。信号量限制并发持久化 goroutine。
+// 它是非阻塞的尽力而为操作:把消息副本提交到固定 worker 池的任务队列,
+// 队列满(背压)时丢弃并记录,绝不阻塞热路径,也不随吞吐增长创建 goroutine。
 func (r *Router) persistAsync(ctx context.Context, msg *proto.Message) {
-	// Kafka 异步持久化(即发即忘)。
-	if r.kafka != nil {
-		msgCopy := pbproto.Clone(msg).(*proto.Message)
-		log.Printf("[router] persistAsync: publishing msgId=%d cmd=%d via Kafka", msg.MsgId, msg.Cmd)
-		go func() {
-			r.persistSem <- struct{}{}
-			defer func() { <-r.persistSem }()
-			r.kafka.Publish(context.WithoutCancel(ctx), msgCopy)
-		}()
-	}
-	// 直接写 MySQL 作为安全网(可用时始终尝试)。
-	// 这确保即使 Kafka 出问题,消息也不会丢失。
-	if r.msgStore != nil {
-		msgCopy := pbproto.Clone(msg).(*proto.Message)
-		log.Printf("[router] persistAsync: dispatching msgId=%d to MySQL (from=%s to=%s cmd=%d)", msg.MsgId, msg.From, msg.To, msg.Cmd)
-		go func() {
-			r.persistSem <- struct{}{}
-			defer func() { <-r.persistSem }()
-			if err := r.msgStore.Save(context.WithoutCancel(ctx), msgCopy); err != nil {
-				log.Printf("[router] mysql save FAIL for msgId=%d: %v", msgCopy.MsgId, err)
-			} else {
-				log.Printf("[router] mysql save OK for msgId=%d", msgCopy.MsgId)
-			}
-		}()
-	}
 	if r.kafka == nil && r.msgStore == nil {
 		log.Printf("[router] persistAsync: no persistence backend configured (kafka=%v msgStore=%v)", r.kafka != nil, r.msgStore != nil)
+		return
+	}
+	// 消息副本:worker 可能稍后才处理,避免与调用方的消息对象竞争。
+	msgCopy := pbproto.Clone(msg).(*proto.Message)
+	task := persistTask{
+		ctx: context.WithoutCancel(ctx),
+		msg: msgCopy,
+	}
+	select {
+	case r.persistTasks <- task:
+		// 已入队,由常驻 worker 异步执行。
+	default:
+		// 队列已满 —— 丢弃。尽力而为:持久化失败比阻塞在线投递好。
+		log.Printf("[router] persistAsync: queue full, dropping msgId=%d (persistence best-effort)", msg.MsgId)
 	}
 }
 

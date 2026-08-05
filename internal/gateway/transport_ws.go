@@ -27,3 +27,12 @@ func (t *wsTransport) Write(p []byte) error {
 	}
 	return t.conn.WriteMessage(websocket.BinaryMessage, p)
 }
+
+// Ping 发送 WebSocket Ping 控制帧。只在 WriteLoop 内被调用,
+// 保证与 Write 共用同一个写者 goroutine(gorilla 不允许并发写)。
+func (t *wsTransport) Ping() error {
+	if t.writeTimeout > 0 {
+		t.conn.SetWriteDeadline(time.Now().Add(t.writeTimeout))
+	}
+	return t.conn.WriteMessage(websocket.PingMessage, nil)
+}

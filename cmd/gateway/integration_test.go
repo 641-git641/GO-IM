@@ -1,20 +1,21 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"fmt"
-	"io"
 	"net/http"
-	"net/url"
 	"testing"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/im/api/proto"
+	"github.com/im/bench/kit"
 	"github.com/im/configs"
-	pb "google.golang.org/protobuf/proto"
+)
+
+// 与 bench/kit 共享的测试目标地址。
+const (
+	testLoginURL = "http://localhost:18080/login"
+	testWSURL    = "ws://localhost:18080/ws"
+	testTCPAddr  = "localhost:18081"
 )
 
 // startTestServer 在 goroutine 中启动服务器并返回清理函数。
@@ -38,14 +39,7 @@ func startTestServer(t *testing.T) (*App, func()) {
 	}()
 
 	// 等待服务器就绪
-	for i := 0; i < 50; i++ {
-		time.Sleep(100 * time.Millisecond)
-		_, err = http.Get("http://localhost:18080/health")
-		if err == nil {
-			break
-		}
-	}
-	if err != nil {
+	if err := kit.WaitHealthy("http://localhost:18080/health", 5*time.Second); err != nil {
 		cancel()
 		t.Fatalf("server did not start: %v", err)
 	}
@@ -56,104 +50,44 @@ func startTestServer(t *testing.T) (*App, func()) {
 	}
 }
 
-// login 为测试用户获取 JWT 令牌。
-func login(t *testing.T, uid, username string) (token, returnedUID string) {
-	t.Helper()
-	resp, err := http.Post("http://localhost:18080/login",
-		"application/x-www-form-urlencoded",
-		bytes.NewBufferString(fmt.Sprintf("uid=%s&username=%s", uid, username)))
-	if err != nil {
-		t.Fatalf("login failed: %v", err)
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("login returned %d: %s", resp.StatusCode, body)
-	}
-
-	var result struct {
-		UID      string `json:"uid"`
-		Username string `json:"username"`
-		Token    string `json:"token"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		t.Fatalf("decode login response: %v", err)
-	}
-	return result.Token, result.UID
-}
-
-// connectWS 使用 JWT 令牌建立 WebSocket 连接。
-func connectWS(t *testing.T, token string) *websocket.Conn {
-	t.Helper()
-	u := url.URL{Scheme: "ws", Host: "localhost:18080", Path: "/ws", RawQuery: "token=" + token}
-	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
-	if err != nil {
-		t.Fatalf("ws connect failed: %v", err)
-	}
-	return conn
-}
-
-// readRawWS 读取一条原始 WebSocket 消息。
-func readRawWS(t *testing.T, conn *websocket.Conn) (int, []byte, error) {
-	t.Helper()
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	return conn.ReadMessage()
-}
-
-// readMessage 从 WebSocket 读取 proto.Message。
-func readMessage(t *testing.T, conn *websocket.Conn) *proto.Message {
-	t.Helper()
-	_, raw, err := readRawWS(t, conn)
-	if err != nil {
-		t.Fatalf("read ws: %v", err)
-	}
-	msg := &proto.Message{}
-	if err := pb.Unmarshal(raw, msg); err != nil {
-		t.Fatalf("unmarshal ws message (%s): %v", string(raw), err)
-	}
-	return msg
-}
-
-// writeMessage 通过 WebSocket 发送 proto.Message。
-func writeMessage(t *testing.T, conn *websocket.Conn, msg *proto.Message) {
-	t.Helper()
-	data, err := pb.Marshal(msg)
-	if err != nil {
-		t.Fatalf("marshal message: %v", err)
-	}
-	conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-	if err := conn.WriteMessage(websocket.BinaryMessage, data); err != nil {
-		t.Fatalf("write ws message: %v", err)
-	}
-}
-
 // TestIntegrationEndToEnd 测试：登录 → 连接 → 发送 → 接收 → ACK
 func TestIntegrationEndToEnd(t *testing.T) {
 	_, cleanup := startTestServer(t)
 	defer cleanup()
 
 	// 登录
-	aliceToken, aliceUID := login(t, "alice", "Alice")
-	bobToken, bobUID := login(t, "bob", "Bob")
+	aliceToken, aliceUID, err := kit.LoginDev(testLoginURL, "alice", "Alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bobToken, bobUID, err := kit.LoginDev(testLoginURL, "bob", "Bob")
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Logf("Logged in: alice=%s bob=%s", aliceUID, bobUID)
 
 	// 双方通过 WebSocket 连接
-	aliceConn := connectWS(t, aliceToken)
+	aliceConn, err := kit.ConnectWS(testWSURL, aliceToken)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer aliceConn.Close()
-	bobConn := connectWS(t, bobToken)
+	bobConn, err := kit.ConnectWS(testWSURL, bobToken)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer bobConn.Close()
 	t.Log("Both clients connected")
 
 	// 排空登录响应（Cmd=CmdLoginResp）
-	aliceLoginResp := readMessage(t, aliceConn)
-	if aliceLoginResp.Cmd != proto.CmdLoginResp {
-		t.Fatalf("expected login response, got cmd=%d", aliceLoginResp.Cmd)
+	aliceLoginResp, err := aliceConn.DrainLoginResp(0)
+	if err != nil {
+		t.Fatal(err)
 	}
 	t.Logf("Alice login response: uid=%s", aliceLoginResp.To)
-	bobLoginResp := readMessage(t, bobConn)
-	if bobLoginResp.Cmd != proto.CmdLoginResp {
-		t.Fatalf("expected login response, got cmd=%d", bobLoginResp.Cmd)
+	bobLoginResp, err := bobConn.DrainLoginResp(0)
+	if err != nil {
+		t.Fatal(err)
 	}
 	t.Logf("Bob login response: uid=%s", bobLoginResp.To)
 
@@ -166,11 +100,16 @@ func TestIntegrationEndToEnd(t *testing.T) {
 		Content:  "Hello Bob!",
 		NeedAck:  true,
 	}
-	writeMessage(t, aliceConn, chatMsg)
+	if err := aliceConn.WriteMessage(chatMsg, 0); err != nil {
+		t.Fatal(err)
+	}
 	t.Log("Alice sent message to Bob")
 
 	// Bob 应当收到该消息
-	received := readMessage(t, bobConn)
+	received, err := bobConn.ReadMessage(0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if received.Cmd != proto.CmdChat {
 		t.Fatalf("expected chat cmd, got %d", received.Cmd)
 	}
@@ -186,7 +125,10 @@ func TestIntegrationEndToEnd(t *testing.T) {
 	t.Logf("Bob received: msgId=%d from=%s content=%s", received.MsgId, received.From, received.Content)
 
 	// Alice 应当收到 ACK
-	ack := readMessage(t, aliceConn)
+	ack, err := aliceConn.ReadMessage(0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if ack.Cmd != proto.CmdAck {
 		t.Fatalf("expected ACK cmd, got %d", ack.Cmd)
 	}
@@ -202,17 +144,25 @@ func TestOfflineMessage(t *testing.T) {
 	defer cleanup()
 
 	// 两个用户都登录
-	aliceToken, aliceUID := login(t, "alice_offline", "Alice")
-	bobToken, bobUID := login(t, "bob_offline", "Bob")
+	aliceToken, aliceUID, err := kit.LoginDev(testLoginURL, "alice_offline", "Alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bobToken, bobUID, err := kit.LoginDev(testLoginURL, "bob_offline", "Bob")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Alice 连接，Bob 保持离线
-	aliceConn := connectWS(t, aliceToken)
+	aliceConn, err := kit.ConnectWS(testWSURL, aliceToken)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer aliceConn.Close()
 
 	// 排空登录响应
-	aliceLoginResp := readMessage(t, aliceConn)
-	if aliceLoginResp.Cmd != proto.CmdLoginResp {
-		t.Fatalf("expected login response, got cmd=%d", aliceLoginResp.Cmd)
+	if _, err := aliceConn.DrainLoginResp(0); err != nil {
+		t.Fatal(err)
 	}
 	t.Log("Alice connected (Bob is offline)")
 
@@ -225,30 +175,42 @@ func TestOfflineMessage(t *testing.T) {
 		Content:  "Are you there, Bob?",
 		NeedAck:  true,
 	}
-	writeMessage(t, aliceConn, chatMsg)
+	if err := aliceConn.WriteMessage(chatMsg, 0); err != nil {
+		t.Fatal(err)
+	}
 
 	// Alice 收到 ACK（消息已离线存储）
-	ack := readMessage(t, aliceConn)
+	ack, err := aliceConn.ReadMessage(0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if ack.Cmd != proto.CmdAck {
 		t.Fatalf("expected ACK, got %d", ack.Cmd)
 	}
 	t.Log("Alice got ACK (offline message stored) ✓")
 
 	// Bob 连接并请求离线消息
-	bobConn := connectWS(t, bobToken)
+	bobConn, err := kit.ConnectWS(testWSURL, bobToken)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer bobConn.Close()
 
 	// 排空登录响应
-	bobLoginResp := readMessage(t, bobConn)
-	if bobLoginResp.Cmd != proto.CmdLoginResp {
-		t.Fatalf("expected login response, got cmd=%d", bobLoginResp.Cmd)
+	if _, err := bobConn.DrainLoginResp(0); err != nil {
+		t.Fatal(err)
 	}
 
 	// 请求离线消息
-	writeMessage(t, bobConn, &proto.Message{Cmd: proto.CmdOffline})
+	if err := bobConn.WriteMessage(&proto.Message{Cmd: proto.CmdOffline}, 0); err != nil {
+		t.Fatal(err)
+	}
 
 	// Bob 应当收到离线消息
-	received := readMessage(t, bobConn)
+	received, err := bobConn.ReadMessage(0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if received.Cmd != proto.CmdChat {
 		t.Fatalf("expected chat cmd, got %d", received.Cmd)
 	}
