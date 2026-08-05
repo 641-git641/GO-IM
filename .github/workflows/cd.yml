@@ -184,8 +184,19 @@ jobs:
             GRAFANA_CLOUD_TOKEN=$GRAFANA_CLOUD_TOKEN
             EOF
 
-            docker compose -f docker-compose.prod.yml -f docker-compose.cd.yml pull
+            # 拉取本次变更的镜像(gateway/frontend/alloy)。服务器到 ghcr.io 的
+            # 国际链路偶发极慢/卡顿,逐个带超时;失败不阻塞 —— up 时会用本地
+            # 已有镜像,缺的镜像再重试。
+            for svc in gateway frontend alloy; do
+              timeout 600 docker compose -f docker-compose.prod.yml -f docker-compose.cd.yml pull "$svc" \
+                || echo "⚠️ pull $svc 超时/失败,继续"
+            done
+
             docker compose -f docker-compose.prod.yml -f docker-compose.cd.yml up -d --remove-orphans
+
+            # frontend/gateway 重建后容器 IP 变化,proxy(nginx)缓存的旧上游地址
+            # 会 502 —— 重启 proxy 重新解析,否则健康检查必失败。
+            docker compose -f docker-compose.prod.yml -f docker-compose.cd.yml restart proxy
 
             echo "等待健康检查(最多 180s)..."
             for i in $(seq 1 30); do
