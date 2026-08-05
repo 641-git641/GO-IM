@@ -38,6 +38,7 @@ on:
       - 'docker-compose.prod.yml'
       - 'docker-compose.cd.yml'
       - 'deploy/**'
+      - '.github/workflows/cd.yml'
       - 'go.mod'
       - 'go.sum'
   workflow_dispatch:
