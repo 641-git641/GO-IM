@@ -124,14 +124,15 @@ jobs:
           script: |
             set -e
             cd ~/im
-            # 服务器到 github.com 偶发 TLS 抖动,重试 5 次
+            # 服务器到 github.com 国际链路偶发极慢/卡顿,重试 5 次,
+            # 每次带 120s 超时 —— 宁可快速失败并给出清晰报错,也不无限挂起
             pulled=0
             for i in $(seq 1 5); do
-              if git pull --ff-only; then pulled=1; break; fi
+              if timeout 120 git pull --ff-only; then pulled=1; break; fi
               echo "git pull 失败($i/5),5 秒后重试..."
               sleep 5
             done
-            [ "$pulled" = "1" ] || { echo "❌ git pull 连续 5 次失败"; exit 1; }
+            [ "$pulled" = "1" ] || { echo "❌ git pull 连续 5 次失败(服务器到 github.com 网络?),中止部署"; exit 1; }
 
       - name: 上传渲染配置与 compose override
         uses: appleboy/scp-action@v0.1.7
