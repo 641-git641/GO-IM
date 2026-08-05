@@ -4,7 +4,8 @@
 #   push main(仅当服务相关文件变更) + workflow_dispatch(手动)
 #
 # 流程:
-#   build  构建 gateway/logic/frontend 三个镜像,推送 GHCR(sha-<7> + latest)
+#   build  构建 gateway/frontend 两个镜像,推送 GHCR(sha-<7> + latest)
+#          (最小栈已移除 logic/kafka 服务,不再构建 logic 镜像)
 #   deploy 渲染生产配置(secrets 注入)→ git pull + scp 上传 → compose pull + up -d
 #          → curl https://$DOMAIN/health 健康检查(重试 180s)
 #
@@ -74,18 +75,6 @@ jobs:
           tags: |
             ghcr.io/641-git641/go-im/gateway:sha-${{ steps.sha.outputs.short }}
             ghcr.io/641-git641/go-im/gateway:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build & push logic
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile.logic
-          push: true
-          tags: |
-            ghcr.io/641-git641/go-im/logic:sha-${{ steps.sha.outputs.short }}
-            ghcr.io/641-git641/go-im/logic:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

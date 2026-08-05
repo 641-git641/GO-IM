@@ -273,14 +273,14 @@ go run ./bench/loadtest -scenario heartbeat -connections 2000 -duration 10m -int
 
 ## 配置
 
-配置文件通过 `CONFIG_PATH` 环境变量指定（Docker 中默认 `/etc/im/config.docker.json`），不存在时自动使用默认值。各环境配置：
+配置文件通过 `CONFIG_PATH` 环境变量指定，不存在时自动使用默认值。各环境配置：
 
 | 文件 | 用途 |
 |------|------|
-| `configs/config.json` | 本地开发 |
-| `configs/config.docker.json` | Docker 部署（容器名地址） |
+| `configs/config.json` | 本地开发（默认路径） |
+| `configs/config.docker.json` | 开发 Docker 栈（dev compose，容器名地址） |
 | `configs/config.bench.json` | 压测（关闭限流、宿主机地址、pprof） |
-| `deploy/config.prod.json` | 生产（`auth.dev_mode: false`） |
+| `deploy/config.prod.json` | 生产模板（占位符经 `deploy/render-config.sh` 渲染为 gitignore 的 `configs/config.prod.generated.json`，prod compose 的 `CONFIG_PATH=/etc/im/config.prod.generated.json` 指向它） |
 
 ### 核心配置项
 
@@ -354,17 +354,26 @@ message Message {
 
 ### 持续部署（CD）
 
-> ⚠️ **自动部署流水线（push main → 构建镜像 → SSH 部署）为计划中的下一步，尚未接入。** 当前生产部署为手动流程，见下节。
+> ⚠️ CD 流水线（[.github/workflows/cd.yml](.github/workflows/cd.yml)：push main → GHCR 镜像 → SSH 部署 + 健康检查）**已配置但尚未首跑**——deploy 步骤需要真实服务器 + 12 个 GitHub Secrets（SSH_HOST / SSH_USER / SSH_KEY / SSH_PORT / GHCR_USER / GHCR_TOKEN / DOMAIN / JWT_SECRET / MYSQL_ROOT_PASSWORD / MYSQL_PASSWORD / MINIO_SECRET_KEY / ADMIN_UID）。服务器就绪后手动触发一次 `workflow_dispatch` 完成首跑。
 
 ## 生产部署
 
-生产编排 [docker-compose.prod.yml](docker-compose.prod.yml)：仅 `proxy`（nginx + SSL 终止）对外暴露 80/443，内部服务（MySQL / Redis / Kafka / MinIO / Gateway / Logic / Frontend）走 Docker 内网；`certbot` 每 12h 自动续期证书。
+生产编排 [docker-compose.prod.yml](docker-compose.prod.yml)：仅 `proxy`（nginx + SSL 终止）对外暴露 80/443，内部服务（MySQL / Redis / MinIO / Gateway / Frontend）走 Docker 内网；`certbot` 每 12h 自动续期证书。
+
+> 💡 **2C2G 最小栈**：为适配 2GB 内存云服务器，生产形态省略了 Kafka 与 Logic——网关直连 MySQL 异步持久化（`router.doPersist` 双路径），历史 / 群聊 / 搜索 / 未读不受影响，基线内存约 500-600MB，全部服务带 `mem_limit`（上限合计 ~1.5G）。换大服务器可恢复完整形态（加回 kafka / logic 服务与 `config.prod.json` 的对应配置）。
 
 ### 服务器前置
 
 - Ubuntu + Docker + Compose v2
 - 开放端口 80/443（云安全组 + 防火墙）
 - 域名 A 记录已解析到服务器 IP
+- 2G 内存机器先配 swap（防启动峰值 OOM）：
+
+  ```bash
+  sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
+  echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+  ```
+
 - 首次 `git clone` 到服务器（**勿执行 `git clean -fdx`**，会误删证书与配置）
 
 ### 首次部署
@@ -373,11 +382,28 @@ message Message {
 # 1. 获取 Let's Encrypt 证书（HTTP-01 验证，先跑 dry-run 再正式获取）
 bash deploy/init-ssl.sh your-domain.com
 
-# 2. 修改 configs/config.docker.json 的 jwt.secret 等敏感项
-# 3. 启动
-docker-compose -f docker-compose.prod.yml up -d
+# 2. 生成凭据并写入 .env（compose 的 MySQL / MinIO 环境变量，密码自拟）
+cat > .env <<EOF
+MYSQL_ROOT_PASSWORD=<root 密码>
+MYSQL_PASSWORD=<应用密码>
+MINIO_ROOT_PASSWORD=<MinIO 密码>
+EOF
 
-# 4. 验证
+# 3. 渲染生产配置（生成 gitignore 的 configs/config.prod.generated.json；
+#    与 CD 流水线同一渲染管线。注意 MYSQL_PASSWORD / MINIO_ROOT_PASSWORD
+#    必须与第 2 步 .env 一致——应用即用 root 访问 MinIO）
+DOMAIN=your-domain.com \
+JWT_SECRET=$(openssl rand -base64 64) \
+MYSQL_PASSWORD=<应用密码> \
+MINIO_SECRET_KEY=<MinIO 密码> \
+ADMIN_UID=<你的 UID> \
+bash deploy/render-config.sh
+
+# 4. 启动（本地构建镜像，2 核机器首次约 5-10 分钟；
+#    之后可配 GHCR 凭据改用 docker compose -f docker-compose.prod.yml -f docker-compose.cd.yml pull + up -d）
+docker compose -f docker-compose.prod.yml up -d
+
+# 5. 验证
 curl -I https://your-domain.com/health
 ```
 

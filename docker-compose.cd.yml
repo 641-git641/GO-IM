@@ -1,8 +1,11 @@
 # IM 项目 — CD 部署 compose override(与 docker-compose.prod.yml 叠加)
 #
-# 用途: 生产 compose 中 gateway/logic/frontend 只有 build:(本地构建),
-#       服务器无法直接 pull。本文件为这三个服务覆盖 image:,
-#       使 CD 可以从 GHCR 拉取已构建镜像,并把配置指向 gitignore 的生成文件。
+# IM 项目 — CD 部署 compose override(与 docker-compose.prod.yml 叠加)
+#
+# 用途: 生产 compose 中 gateway/frontend 只有 build:(本地构建),
+#       服务器无法直接 pull。本文件为这两个服务覆盖 image:,
+#       使 CD 可以从 GHCR 拉取已构建镜像。
+#       (最小栈已移除 logic/kafka 服务,故不再有 logic 镜像覆盖)
 #
 # 用法(CD 自动执行,也可手动):
 #   docker compose -f docker-compose.prod.yml -f docker-compose.cd.yml pull
@@ -13,21 +16,13 @@
 #     本地手动执行时默认用 latest。
 #   - build: !reset null 移除 prod compose 中的 build: 键
 #     (Compose spec 的 !reset 标签;若两者并存,compose 会本地重建而非 pull)。
-#   - CONFIG_PATH 覆盖为 /etc/im/config.prod.generated.json ——
-#     CD 渲染的生成配置(gitignore),避免覆盖已入库的 config.docker.json。
+#   - 配置路径已在 prod compose 指向 /etc/im/config.prod.generated.json,
+#     本文件无需再覆盖。
 
 services:
   gateway:
     image: ghcr.io/641-git641/go-im/gateway:${TAG:-latest}
     build: !reset null
-    environment:
-      CONFIG_PATH: /etc/im/config.prod.generated.json
-
-  logic:
-    image: ghcr.io/641-git641/go-im/logic:${TAG:-latest}
-    build: !reset null
-    environment:
-      CONFIG_PATH: /etc/im/config.prod.generated.json
 
   frontend:
     image: ghcr.io/641-git641/go-im/frontend:${TAG:-latest}

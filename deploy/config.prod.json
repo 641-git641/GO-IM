@@ -49,14 +49,15 @@
         },
 
         "kafka": {
-            "_comment": "Kafka 用于消息异步持久化，低资源服务器可关闭（enabled: false）",
-            "enabled": true,
+            "_comment": "最小栈已禁用 Kafka：网关直连 MySQL 异步持久化（doPersist 双路径），历史/群聊/搜索/未读不受影响。换大服务器可重新开启（enabled: true + brokers）",
+            "enabled": false,
             "brokers": ["kafka:9092"],
             "topic": "im.message.persist"
         },
 
         "logic": {
-            "addr": "logic:50051",
+            "_comment": "留空 = 网关用本地 MessageStore 查询历史/搜索/未读（最小栈不部署 logic 服务）",
+            "addr": "",
             "listen_addr": ":50051"
         },
 
@@ -94,17 +95,9 @@
 
     "admin_uids": ["YOUR_ADMIN_UID"],
 
-    "logic": {
-        "addr": "logic:50051",
-        "listen_addr": ":50051",
-        "mysql": { "enabled": true, "dsn": "im:CHANGE_ME_PASSWORD@tcp(mysql:3306)/im?parseTime=true&charset=utf8mb4" },
-        "kafka": { "enabled": true, "brokers": ["kafka:9092"], "topic": "im.message.persist" },
-        "worker_id": 2
-    },
-
     "stability": {
-        "_comment": "生产环境建议限制最大连接数",
-        "max_connections": 1000,
+        "_comment": "2C2G 最小栈限制连接数,防止资源耗尽;大服务器可调回 1000",
+        "max_connections": 200,
         "http_read_timeout": "10s",
         "http_write_timeout": "10s",
         "http_idle_timeout": "120s",

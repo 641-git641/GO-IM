@@ -14,9 +14,9 @@
 #   ADMIN_UID        管理员 UID → admin_uids
 #
 # 注意:
-#   1. 渲染目标为 gitignore 的 config.prod.generated.json,
-#      服务器上手动部署(init-ssl.sh)仍用 configs/config.docker.json。
-#   2. docker-compose.cd.yml 会为 gateway/logic 覆盖 CONFIG_PATH 指向本文件。
+#   1. 渲染目标为 gitignore 的 configs/config.prod.generated.json,
+#      手动部署与 CD 流水线共用该产物(prod compose 的 CONFIG_PATH 即指向它)。
+#   2. dev 环境不受影响,仍用 configs/config.docker.json。
 # =============================================================================
 
 set -euo pipefail

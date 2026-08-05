@@ -237,6 +237,8 @@ flowchart TD
 
 > 内网服务(redis / mysql / kafka / minio / gateway / logic / frontend)不映射宿主端口,仅 Docker 内部网络可达。
 
+> 💡 **2C2G 最小栈形态**(当前 prod compose 默认):省略 Kafka 与 Logic,共 7 个服务——网关直连 MySQL 异步持久化(`router.doPersist` 双路径),历史 / 群聊 / 搜索 / 未读不受影响。换大服务器可恢复上图完整形态。
+
 ---
 
 ## 8. Go 模块图

@@ -1,9 +1,12 @@
-# IM 项目 — 生产环境 Docker Compose
+# IM 项目 — 生产环境 Docker Compose(2C2G 最小栈,7 个服务)
 #
 # 与开发环境 (docker-compose.yml) 的区别：
-#   1. 不对外暴露内部服务端口（MySQL、Redis、Kafka、MinIO、Gateway、Logic）
+#   1. 不对外暴露内部服务端口（MySQL、Redis、MinIO、Gateway）
 #   2. 新增 proxy 服务（nginx + SSL 终止）
 #   3. 新增 certbot 服务（Let's Encrypt 自动续期）
+#   4. 省略 Kafka + Logic：网关直连 MySQL 异步持久化（router.doPersist 双路径），
+#      历史/群聊/搜索/未读全部可用；换大服务器可恢复完整形态
+#   5. 全部服务带 mem_limit，适配 2GB 内存云服务器
 #
 # 启动前：先运行 deploy/init-ssl.sh 获取 SSL 证书
 # 启动:  docker-compose -f docker-compose.prod.yml up -d
@@ -17,6 +20,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: im-redis
+    mem_limit: 128m
     # 不暴露端口到宿主机 —— 仅 Docker 内部网络可访问
     volumes:
       - redis-data:/data
@@ -30,7 +34,9 @@ services:
   mysql:
     image: mysql:8.4
     container_name: im-mysql
-    command: --mysql-native-password=ON
+    # --performance-schema=OFF: 8.4 默认开启,可省 150-300MB 内存
+    command: --mysql-native-password=ON --performance-schema=OFF
+    mem_limit: 512m
     # 不暴露端口到宿主机
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-im-prod-root}
@@ -46,36 +52,15 @@ services:
       timeout: 5s
       retries: 10
 
-  kafka:
-    image: apache/kafka:3.9.0
-    container_name: im-kafka
-    # 不暴露端口到宿主机
-    environment:
-      KAFKA_NODE_ID: "1"
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@127.0.0.1:9093
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
-    volumes:
-      - kafka-data:/var/lib/kafka/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "/opt/kafka/bin/kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
-      interval: 15s
-      timeout: 10s
-      retries: 15
-      start_period: 30s
-
   minio:
     image: minio/minio:latest
     container_name: im-minio
-    # 不暴露端口到宿主机
+    # GOMEMLIMIT 限制 Go 运行时内存上限,防其抢占 MySQL/Redis 配额
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      GOMEMLIMIT: 256MiB
+    mem_limit: 256m
     command: server /data --console-address ":9001"
     volumes:
       - minio-data:/data
@@ -87,27 +72,6 @@ services:
       retries: 5
 
   # =========================================================================
-  # 业务层
-  # =========================================================================
-
-  logic:
-    build:
-      context: .
-      dockerfile: Dockerfile.logic
-    container_name: im-logic
-    # 不暴露端口到宿主机
-    environment:
-      CONFIG_PATH: /etc/im/config.docker.json
-    volumes:
-      - ./configs:/etc/im
-    depends_on:
-      mysql:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-    restart: unless-stopped
-
-  # =========================================================================
   # 连接层
   # =========================================================================
 
@@ -116,9 +80,12 @@ services:
       context: .
       dockerfile: Dockerfile.gateway
     container_name: im-gateway
+    mem_limit: 256m
     # 不暴露端口到宿主机 —— 所有流量经 proxy (nginx) 转发
+    # 生产用渲染产物 config.prod.generated.json(deploy/render-config.sh 生成,
+    # 首次部署必须先渲染;dev 环境仍用 configs/config.docker.json)
     environment:
-      CONFIG_PATH: /etc/im/config.docker.json
+      CONFIG_PATH: /etc/im/config.prod.generated.json
     volumes:
       - ./configs:/etc/im
     depends_on:
@@ -126,12 +93,8 @@ services:
         condition: service_healthy
       mysql:
         condition: service_healthy
-      kafka:
-        condition: service_healthy
       minio:
         condition: service_healthy
-      logic:
-        condition: service_started
     restart: unless-stopped
 
   # =========================================================================
@@ -143,6 +106,7 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
     container_name: im-frontend
+    mem_limit: 128m
     # 不暴露端口到宿主机 —— proxy 转发
     depends_on:
       - gateway
@@ -155,6 +119,7 @@ services:
   proxy:
     image: nginx:1.27-alpine
     container_name: im-proxy
+    mem_limit: 128m
     ports:
       - "80:80"
       - "443:443"
@@ -173,6 +138,7 @@ services:
   certbot:
     image: certbot/certbot
     container_name: im-certbot
+    mem_limit: 128m
     volumes:
       - ./deploy/certbot/www:/var/www/certbot
       - ./deploy/certbot/conf:/etc/letsencrypt
@@ -187,5 +153,4 @@ services:
 volumes:
   redis-data:
   mysql-data:
-  kafka-data:
   minio-data:
