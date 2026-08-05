@@ -354,13 +354,13 @@ message Message {
 
 ### 持续部署（CD）
 
-> ✅ CD 流水线（[.github/workflows/cd.yml](.github/workflows/cd.yml)：push main → GHCR 镜像 → SSH 部署 + 健康检查）已接入生产服务器（goimchat.site）。需配置 **11 个必配 secrets**：SSH_HOST / SSH_USER / SSH_KEY / SSH_PORT / DOMAIN / JWT_SECRET / MYSQL_ROOT_PASSWORD / MYSQL_PASSWORD / MINIO_ROOT_USER / MINIO_SECRET_KEY / ADMIN_UID。**GHCR_USER / GHCR_TOKEN 可选**——镜像公开时匿名拉取即可，配了才执行 `docker login`（镜像转私有后按需补）。
+> CD 流水线（[.github/workflows/cd.yml](.github/workflows/cd.yml)：push main → GHCR 镜像 → SSH 部署 + 健康检查）已接入生产服务器（goimchat.site）。需配置 **11 个必配 secrets**：SSH_HOST / SSH_USER / SSH_KEY / SSH_PORT / DOMAIN / JWT_SECRET / MYSQL_ROOT_PASSWORD / MYSQL_PASSWORD / MINIO_ROOT_USER / MINIO_SECRET_KEY / ADMIN_UID。**GHCR_USER / GHCR_TOKEN 可选**——镜像公开时匿名拉取即可，配了才执行 `docker login`（镜像转私有后按需补）。
 
 ## 生产部署
 
 生产编排 [docker-compose.prod.yml](docker-compose.prod.yml)：仅 `proxy`（nginx + SSL 终止）对外暴露 80/443，内部服务（MySQL / Redis / MinIO / Gateway / Frontend）走 Docker 内网；`certbot` 每 12h 自动续期证书。
 
-> 💡 **2C2G 最小栈**：为适配 2GB 内存云服务器，生产形态省略了 Kafka 与 Logic——网关直连 MySQL 异步持久化（`router.doPersist` 双路径），历史 / 群聊 / 搜索 / 未读不受影响，基线内存约 500-600MB，全部服务带 `mem_limit`（上限合计 ~1.5G）。换大服务器可恢复完整形态（加回 kafka / logic 服务与 `config.prod.json` 的对应配置）。
+> **2C2G 最小栈**：为适配 2GB 内存云服务器，生产形态省略了 Kafka 与 Logic——网关直连 MySQL 异步持久化（`router.doPersist` 双路径），历史 / 群聊 / 搜索 / 未读不受影响，基线内存约 500-600MB，全部服务带 `mem_limit`（上限合计 ~1.5G）。换大服务器可恢复完整形态（加回 kafka / logic 服务与 `config.prod.json` 的对应配置）。
 
 ### 服务器前置
 
@@ -447,6 +447,7 @@ curl -I https://your-domain.com/health
 | [docs/07-message-middleware-design.md](docs/07-message-middleware-design.md) | 消息中间件设计 |
 | [docs/08-architecture-diagrams.md](docs/08-architecture-diagrams.md) | Mermaid 架构图集（10 张） |
 | [docs/09-load-test-report.md](docs/09-load-test-report.md) | 完整栈压测报告 |
+| [docs/10-ci-cd-guide.md](docs/10-ci-cd-guide.md) | CI/CD 入门指南（push 到线上的全流程） |
 | [CLAUDE.md](CLAUDE.md) | AI 辅助开发指南 |
 
 ## License
