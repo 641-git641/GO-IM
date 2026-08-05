@@ -1,30 +1,74 @@
 # IM — Go 即时通讯系统
 
-基于 Go 构建的即时通讯（IM）系统，支持 WebSocket / TCP 双传输协议、单聊 / 群聊、文件上传、全文搜索、多网关集群等功能。前后端分离，Docker 一键部署。
+![CI](https://github.com/641-git641/GO-IM/actions/workflows/ci.yml/badge.svg)
+![Go](https://img.shields.io/badge/Go-1.26.5-00ADD8?logo=go&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green)
+![PRs](https://img.shields.io/badge/PRs-Welcome-8A2BE2)
+
+基于 Go 构建的即时通讯（IM）系统：WebSocket / TCP 双传输协议、单聊 / 群聊、文件上传、全文搜索、消息撤回、多网关集群。前后端分离，Docker 一键部署，GitHub Actions 自动构建验证。
 
 ## 架构
 
 ```
- Client (React SPA)          ───  nginx (:80)  ───  Gateway (:8080 / :8081)
-                                                         │
-                                                    gRPC (:50051)
-                                                         │
-                                                      Logic
-                                                         │
-                                              ┌──────────┼──────────┐
-                                            MySQL     Redis     Kafka    MinIO
+ Client (React SPA)  ──  nginx (:80)  ──  Gateway (:8080 / :8081)
+                                              │ gRPC (:50051)
+                                           Logic
+                                              │
+                                 ┌────────────┼────────────┐
+                               MySQL        Redis        Kafka      MinIO
 ```
 
-- **Gateway**：连接层，WebSocket + gnet TCP + HTTP API，消息路由、心跳、离线存储
-- **Logic**：业务层，gRPC 服务 + Kafka Consumer，消息持久化、历史查询、群组管理
-- **Frontend**：React + TypeScript + Tailwind CSS，响应式单页应用
+```mermaid
+flowchart TD
+    Client["Web (React) / PC / Mobile<br/>客户端"]
+
+    subgraph GW["Gateway 接入层 (单体 · :8080 HTTP/WS · :8081 TCP)"]
+        HTTP["HTTP API<br/>/login /register /online /health /upload /file /search /unread /group/*"]
+        WS["WebSocket 长连接<br/>(gorilla/websocket)"]
+        TCP["gnet TCP 长连接<br/>4字节长度前缀 + Protobuf"]
+        Hub["Connection Hub<br/>UID → *Client + 离线队列"]
+        Router["Router<br/>路由 / ACK / 去重 / 限流 / 群扇出 / 撤回 / 搜索"]
+    end
+
+    subgraph LG["Logic 业务层 (gRPC :50051)"]
+        GRPC["gRPC Server<br/>QueryHistory / GetUser"]
+        CONS["Kafka Consumer<br/>批量落库 MySQL"]
+    end
+
+    subgraph DS["存储层"]
+        MYSQL["MySQL<br/>users / messages / groups"]
+        REDIS["Redis<br/>离线队列 / 集群服务发现"]
+        KAFKA["Kafka<br/>im.message.persist"]
+        MINIO["MinIO (S3)<br/>im-files 对象存储 + 缩略图"]
+    end
+
+    Client -->|HTTP| HTTP
+    Client -->|WebSocket| WS
+    Client -->|TCP| TCP
+    WS --> Hub
+    TCP --> Hub
+    HTTP --> Hub
+    Hub --> Router
+    Router -->|异步持久化| KAFKA
+    Router -->|gRPC 历史查询| GRPC
+    CONS --> MYSQL
+    GRPC --> MYSQL
+    Hub --> REDIS
+    Router --> MINIO
+```
+
+> 图中是当前代码的真实运行视图。更多图（热路径 / 群聊扇出 / 跨网关转发 / 集群拓扑 / 部署拓扑等）见 [docs/08-architecture-diagrams.md](docs/08-architecture-diagrams.md)。
+
+- **Gateway**：连接层，WebSocket + gnet TCP + HTTP API。消息路由、ACK、去重、限流、群扇出、离线存储、撤回、搜索。
+- **Logic**：业务层，gRPC 服务 + Kafka Consumer，消息持久化、历史查询、群组管理。
+- **Frontend**：React + TypeScript + Tailwind CSS，响应式单页应用。
 
 ## 功能
 
 | 模块 | 说明 |
 |------|------|
 | 实时消息 | 单聊 / 群聊，在线推送 + 离线拉取，消息 ACK 与去重 |
-| 双传输协议 | WebSocket（gorilla/websocket）+ 裸 TCP（gnet v2），通过 Transport 接口统一 |
+| 双传输协议 | WebSocket（gorilla/websocket）+ 裸 TCP（gnet v2），Transport 接口统一 |
 | 用户系统 | 注册 / 登录（JWT + bcrypt）、在线状态、角色管理（admin） |
 | 好友系统 | 添加 / 接受 / 拒绝 / 删除，WebSocket 实时通知 |
 | 群组管理 | 创建 / 加入 / 离开 / 踢人 / 改名 / 转交，群通知（member_joined / member_left） |
@@ -49,7 +93,7 @@
 
 ```bash
 # 克隆项目
-git clone <repo-url> && cd im
+git clone https://github.com/641-git641/GO-IM.git && cd GO-IM
 
 # 构建所有镜像（首次或依赖变更时需要）
 docker-compose build
@@ -59,9 +103,6 @@ docker-compose up -d
 
 # 查看各服务运行状态
 docker-compose ps
-
-# 查看所有服务日志
-docker-compose logs -f
 ```
 
 浏览器打开 [http://localhost](http://localhost)，注册账号即可使用。
@@ -93,39 +134,12 @@ docker-compose build frontend && docker-compose up -d frontend
 docker-compose build --no-cache && docker-compose up -d
 ```
 
-### 查看日志
-
-```bash
-# 实时跟踪所有服务
-docker-compose logs -f
-
-# 只看某个服务
-docker-compose logs -f gateway
-docker-compose logs -f logic
-docker-compose logs -f frontend
-
-# 最近 N 行
-docker-compose logs --tail=50 gateway
-```
-
-### 重启单个服务
-
-```bash
-docker-compose restart gateway     # 不重建镜像，仅重启容器
-docker-compose restart frontend
-```
-
 ### 停止与清理
 
 ```bash
-# 停止所有服务（保留数据卷和镜像）
-docker-compose down
-
-# 停止并删除数据卷（MySQL、Redis、Kafka、MinIO 数据清空）
-docker-compose down -v
-
-# 同时删除构建的镜像
-docker-compose down -v --rmi all
+docker-compose down              # 停止所有服务（保留数据卷和镜像）
+docker-compose down -v           # 停止并删除数据卷（数据清空）
+docker-compose down -v --rmi all # 同时删除构建的镜像
 ```
 
 ### 服务端口
@@ -136,11 +150,10 @@ docker-compose down -v --rmi all
 | `:8080` | Gateway HTTP + WebSocket | API / 长连接 |
 | `:8081` | Gateway gnet TCP | 裸 TCP 长连接 |
 | `:50051` | Logic gRPC | 内部服务 |
-| `:6379` | Redis | 离线消息 / 会话 |
+| `:6379` | Redis | 离线消息 / 集群发现 |
 | `:3307` | MySQL | 用户 / 消息持久化 |
-| `:9092` | Kafka | 消息队列 |
-| `:9000` | MinIO API | 对象存储 |
-| `:9001` | MinIO Console | 管理面板 |
+| `:9093` / `:9094` | Kafka | 容器内 / 宿主机 listener |
+| `:9000` / `:9001` | MinIO API / Console | 对象存储 |
 
 ## 项目结构
 
@@ -150,22 +163,22 @@ im/
 │   ├── gateway/             # Gateway 入口（连接层）
 │   └── logic/               # Logic 入口（业务层）
 ├── internal/
-│   ├── gateway/             # Gateway 核心：Server, Hub, Router, Client, Transport
-│   │                       #   GnetHandler, HashRing, Cluster, GroupStore, etc.
+│   ├── gateway/             # Gateway 核心：Server, Hub, Router, Client, Transport,
+│   │                       #   GnetHandler, HashRing, Cluster, GroupStore, ...
 │   ├── logic/               # Logic gRPC Server + Kafka Consumer
 │   ├── mq/                  # Kafka Producer + Consumer
 │   ├── repo/                # MySQL 数据持久层（UserStore, MessageStore）
 │   └── pkg/
 │       ├── jwt/             # JWT 签发 / 验证
 │       └── snowflake/       # 分布式 ID 生成器
+├── bench/
+│   ├── kit/                 # 压测客户端库（集成测试复用）
+│   └── loadtest/            # 压测主程序（5 个场景）
 ├── api/proto/
 │   ├── message.proto        # 核心消息体（客户端 ↔ 服务端）
 │   ├── logic.proto          # Gateway → Logic gRPC 接口
 │   └── gateway.proto        # Gateway → Gateway gRPC 接口
-├── configs/
-│   ├── config.json          # 本地开发配置
-│   ├── config.docker.json   # Docker 部署配置
-│   └── config.example.json  # 完整配置示例
+├── configs/                 # 配置文件（本地 / Docker / 压测 / 生产）
 ├── web/                     # React 前端（TypeScript + Vite + Tailwind）
 │   ├── src/
 │   │   ├── components/      # UI 组件（chat, contact, group, friend, admin）
@@ -174,11 +187,13 @@ im/
 │   │   ├── lib/             # API 客户端、WebSocket 管理、认证工具
 │   │   └── hooks/           # 自定义 Hooks
 │   └── nginx.conf           # 前端 nginx 配置（SPA + API 反向代理）
-├── docs/                    # 设计文档、API 参考、实现记录
-├── docker-compose.yml       # 一键部署编排
-├── Dockerfile.gateway       # Gateway 镜像
-├── Dockerfile.logic         # Logic 镜像
-└── Dockerfile.frontend      # 前端镜像
+├── docs/                    # 设计文档、架构图、压测报告
+├── deploy/                  # 生产部署：init-ssl.sh / nginx.prod.conf / config.prod.json
+├── .github/workflows/       # GitHub Actions CI 流水线
+├── docker-compose.yml       # 开发编排（一键部署）
+├── docker-compose.prod.yml  # 生产编排（SSL 终止 + 自动续期）
+├── Dockerfile.gateway / .logic / .frontend
+└── LICENSE
 ```
 
 ## 本地开发
@@ -190,22 +205,16 @@ im/
 docker-compose up -d redis mysql kafka minio
 ```
 
-### 启动 Gateway
+### 启动 Gateway / Logic / 前端
 
 ```bash
 # 使用本地配置（configs/config.json）
 go run ./cmd/gateway/
-```
 
-### 启动 Logic（需要 MySQL）
-
-```bash
+# Logic（需要 MySQL）
 go run ./cmd/logic/
-```
 
-### 启动前端
-
-```bash
+# 前端
 cd web
 npm install
 npm run dev          # Vite 开发服务器，默认 :5173
@@ -214,19 +223,64 @@ npm run dev          # Vite 开发服务器，默认 :5173
 ### 运行测试
 
 ```bash
-# 全部单元测试（226 个）
+# 全部单元测试（CI 中带 MySQL 完整跑，见徽章）
 go test ./internal/...
 
-# 集成测试（需要本地 Gateway 运行在 :18080）
+# 集成测试（内存模式，无需外部服务；本地需 Gateway 跑在 :18080）
 go test ./cmd/gateway/ -v
 
 # 单个包
 go test ./internal/gateway/ -v -run TestRouter
 ```
 
+## 压测
+
+完整报告见 [docs/09-load-test-report.md](docs/09-load-test-report.md)。工具：`bench/kit`（客户端库）+ `bench/loadtest`（压测主程序）。
+
+### 场景命令
+
+```bash
+# S1 连接抖动：1000 目标连接，50 conn/s，60s
+go run ./bench/loadtest -scenario churn -connections 1000 -conn-rate 50 -duration 60s
+
+# S2 单聊吞吐：1000 用户 × 20 msg/s，60s
+go run ./bench/loadtest -scenario chat -users 1000 -rate 20 -duration 60s
+
+# S3 群聊扇出：500 人群
+go run ./bench/loadtest -scenario group -group-size 500 -groups 1 -msgs 100 -duration 30s
+
+# S4 历史/搜索：50 并发 HTTP + 10 WS 翻页
+go run ./bench/loadtest -scenario search -workers 50 -history-workers 10 -duration 60s -query bench-chat
+
+# S5 心跳浸泡：2000 连接 × 10 分钟，15s 心跳
+go run ./bench/loadtest -scenario heartbeat -connections 2000 -duration 10m -interval 15s
+```
+
+### 实测结果（单机回环，2026-08）
+
+| 场景 | 配置 | 结果 |
+|------|------|------|
+| S1 连接抖动 | 3000 次完整生命周期 | **100% 成功**，无泄漏 |
+| S2 单聊吞吐 | 1000 连接 · 1,194,000 条消息 | **19,900 msg/s**，100% 送达/ACK，投递 P99=16ms |
+| S3 群聊扇出 | 500 人群 · 43,413 次投递 | **扇出 P99=25ms** |
+| S4 历史查询 | 21,170 次 · 635,100 条消息（352 qps） | WS 翻页 P99=73ms |
+| S5 心跳浸泡 | 2000 连接 · 10 分钟 · 78,000 心跳 | **零失败**，内存 44MB 稳定 |
+
+**已知边界（诚实标注）**：
+
+- HTTP 全文搜索（ngram FULLTEXT）在 50 并发下 P99≈32s，需专用方案（Elasticsearch / LIKE 前缀索引），不适合高并发在线搜索。
+- 异步持久化（Gateway→Kafka→MySQL 双写，64 worker）在 3k msg/s 下持久化率约 22%——在线消息已全部送达，落库为尽力而为，是容量问题而非丢数据 bug。生产可按需提升并发或改为只写 Kafka。
+
 ## 配置
 
-配置文件通过 `CONFIG_PATH` 环境变量指定（Docker 中默认 `/etc/im/config.docker.json`），不存在时自动使用默认值。
+配置文件通过 `CONFIG_PATH` 环境变量指定（Docker 中默认 `/etc/im/config.docker.json`），不存在时自动使用默认值。各环境配置：
+
+| 文件 | 用途 |
+|------|------|
+| `configs/config.json` | 本地开发 |
+| `configs/config.docker.json` | Docker 部署（容器名地址） |
+| `configs/config.bench.json` | 压测（关闭限流、宿主机地址、pprof） |
+| `deploy/config.prod.json` | 生产（`auth.dev_mode: false`） |
 
 ### 核心配置项
 
@@ -237,7 +291,7 @@ go test ./internal/gateway/ -v -run TestRouter
     "tcp_addr": ":8081",
     "transport": "both",             // "websocket" | "gnet" | "both"
     "mysql":  { "enabled": true, "dsn": "..." },
-    "kafka":  { "enabled": true, "brokers": ["kafka:9092"] },
+    "kafka":  { "enabled": true, "brokers": ["kafka:9093"] },
     "redis":  { "addr": "redis:6379" },
     "object_storage": { "enabled": true, "endpoint": "minio:9000" },
     "rate_limit": { "enabled": true, "rate": 10, "burst": 20 },
@@ -283,33 +337,90 @@ message Message {
 
 详细协议规范见 [docs/07-api-reference.md](docs/07-api-reference.md)。
 
+## CI/CD
+
+### 持续集成（CI）
+
+`.github/workflows/ci.yml` —— push main / PR 触发，concurrency 自动取消旧 run。**6 个 job 全部绿色才算通过**：
+
+| Job | 内容 |
+|------|------|
+| `lint` | gofmt 检查 + go vet + go build |
+| `unit` | 单元测试（MySQL 8.4 service container，自动激活 repo 测试） |
+| `integration` | 5 个集成测试（内存模式，无需外部服务） |
+| `kafka` | Kafka Producer→Consumer 端到端（KRaft 单节点） |
+| `frontend` | npm ci + build |
+| `docker` | 三个镜像构建（buildx + GHA 缓存，只构建不推送） |
+
+### 持续部署（CD）
+
+> ⚠️ **自动部署流水线（push main → 构建镜像 → SSH 部署）为计划中的下一步，尚未接入。** 当前生产部署为手动流程，见下节。
+
+## 生产部署
+
+生产编排 [docker-compose.prod.yml](docker-compose.prod.yml)：仅 `proxy`（nginx + SSL 终止）对外暴露 80/443，内部服务（MySQL / Redis / Kafka / MinIO / Gateway / Logic / Frontend）走 Docker 内网；`certbot` 每 12h 自动续期证书。
+
+### 服务器前置
+
+- Ubuntu + Docker + Compose v2
+- 开放端口 80/443（云安全组 + 防火墙）
+- 域名 A 记录已解析到服务器 IP
+- 首次 `git clone` 到服务器（**勿执行 `git clean -fdx`**，会误删证书与配置）
+
+### 首次部署
+
+```bash
+# 1. 获取 Let's Encrypt 证书（HTTP-01 验证，先跑 dry-run 再正式获取）
+bash deploy/init-ssl.sh your-domain.com
+
+# 2. 修改 configs/config.docker.json 的 jwt.secret 等敏感项
+# 3. 启动
+docker-compose -f docker-compose.prod.yml up -d
+
+# 4. 验证
+curl -I https://your-domain.com/health
+```
+
+### 安全注意事项
+
+- 生产必须 `auth.dev_mode: false`（启用 bcrypt 密码校验）
+- 修改 JWT secret、MySQL / MinIO 密码，勿用默认值
+- `admin_uids` 仅配置可信账号
+- SSL 证书首次由 `init-ssl.sh` 获取，之后 certbot 自动续期
+
 ## 技术栈
 
 | 层级 | 技术 |
 |------|------|
 | 语言 | Go 1.26 + TypeScript 6 |
-| 前端框架 | React 19 + React Router 7 + Zustand 5 |
+| 前端框架 | React 19 + React Router 7 + Zustand 5 + TanStack Query |
 | 前端样式 | Tailwind CSS 3 + Lucide Icons |
-| 构建工具 | Vite 8 + Rolldown |
+| 构建 / 质量 | Vite 8 + Rolldown · oxlint |
 | 长连接 | gorilla/websocket + panjf2000/gnet v2 |
-| RPC | gRPC + Protobuf |
-| 消息队列 | Apache Kafka (segmentio/kafka-go) |
-| 数据库 | MySQL 8.4 (database/sql) |
-| 缓存 | Redis 7 (go-redis/v9) |
-| 对象存储 | MinIO (S3 兼容) |
+| RPC | gRPC + Protobuf（buf + @bufbuild/protobuf） |
+| 消息队列 | Apache Kafka（segmentio/kafka-go） |
+| 数据库 | MySQL 8.4（database/sql） |
+| 缓存 | Redis 7（go-redis/v9） |
+| 对象存储 | MinIO（S3 兼容） |
 | 认证 | JWT HS256 + bcrypt |
 | 反向代理 | nginx（SPA 静态服务 + API 代理） |
 | 容器化 | Docker + Docker Compose |
+| 持续集成 | GitHub Actions（6 jobs） |
 
 ## 文档
 
 | 文档 | 说明 |
 |------|------|
 | [docs/01-architecture-design.md](docs/01-architecture-design.md) | 架构设计与技术选型 |
-| [docs/07-api-reference.md](docs/07-api-reference.md) | 完整 HTTP / WS / TCP 接口文档 |
+| [docs/02-code-review.md](docs/02-code-review.md) | 代码审查记录 |
+| [docs/03-next-steps.md](docs/03-next-steps.md) | 下一步计划 |
 | [docs/04-phase1-implementation.md](docs/04-phase1-implementation.md) | Phase 1 实现记录 |
 | [docs/05-phase2-completion.md](docs/05-phase2-completion.md) | Phase 2 完成报告 |
 | [docs/06-phase4-completion.md](docs/06-phase4-completion.md) | Phase 4 完成报告 |
+| [docs/07-api-reference.md](docs/07-api-reference.md) | 完整 HTTP / WS / TCP 接口文档 |
+| [docs/07-message-middleware-design.md](docs/07-message-middleware-design.md) | 消息中间件设计 |
+| [docs/08-architecture-diagrams.md](docs/08-architecture-diagrams.md) | Mermaid 架构图集（10 张） |
+| [docs/09-load-test-report.md](docs/09-load-test-report.md) | 完整栈压测报告 |
 | [CLAUDE.md](CLAUDE.md) | AI 辅助开发指南 |
 
 ## License

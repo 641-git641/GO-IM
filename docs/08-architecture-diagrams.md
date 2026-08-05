@@ -188,7 +188,7 @@ flowchart LR
         LG["logic<br/>:50051 gRPC"]
         RD["redis<br/>:6379"]
         MY["mysql<br/>:3307 → 容器 3306"]
-        KA["kafka<br/>:9092"]
+        KA["kafka<br/>:9093 容器内 · :9094 宿主机"]
         MI["minio<br/>:9000 API · :9001 Console"]
 
         FE -->|/api /ws 反代| GW
