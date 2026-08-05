@@ -167,8 +167,8 @@ func runChurn(opts *options, httpBase, wsURL string) (*Result, error) {
 
 // chatConn 把一个已连接的 benchConn 与它的发送时钟绑定。
 type chatConn struct {
-	conn benchConn
-	uid  string
+	conn  benchConn
+	uid   string
 	clock *seqClock
 }
 
@@ -530,8 +530,8 @@ func runSearch(opts *options, httpBase, wsURL string) (*Result, error) {
 		histWG.Add(1)
 		go func(w int) {
 			defer histWG.Done()
-			uid := fmt.Sprintf("user-%06d", w*2)          // 查自己与配对用户的历史
-			partner := fmt.Sprintf("user-%06d", w*2+1)    // 指向 chat 场景种子的用户对
+			uid := fmt.Sprintf("user-%06d", w*2)       // 查自己与配对用户的历史
+			partner := fmt.Sprintf("user-%06d", w*2+1) // 指向 chat 场景种子的用户对
 			token, _, err := kit.LoginDev(httpBase+"/login", uid, uid)
 			if err != nil {
 				st.failed.Add(1)
@@ -551,10 +551,10 @@ func runSearch(opts *options, httpBase, wsURL string) (*Result, error) {
 				default:
 				}
 				req := &proto.Message{
-					Cmd:      proto.CmdHistory,
-					To:       partner,
-					ChatType: proto.ChatTypeSingle,
-					Seq:      30, // 每页 30 条
+					Cmd:       proto.CmdHistory,
+					To:        partner,
+					ChatType:  proto.ChatTypeSingle,
+					Seq:       30, // 每页 30 条
 					Timestamp: time.Now().UnixMilli(),
 				}
 				begin := time.Now()

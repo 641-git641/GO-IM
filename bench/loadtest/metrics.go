@@ -105,28 +105,28 @@ type ServiceSummary struct {
 
 // Result 是压测的运行结果,可输出为表格或 JSON。
 type Result struct {
-	Scenario  string            `json:"scenario"`
-	DurationS float64           `json:"duration_s"`
-	Sent      int64             `json:"sent"`
-	Delivered int64             `json:"delivered"`
-	Acked     int64             `json:"acked"`
-	Failed    int64             `json:"failed"`
-	Drops     int64             `json:"drops"`
-	Connects  int64             `json:"connects"`
-	ConnectOK int64             `json:"connect_ok"`
-	SearchOK  int64             `json:"search_ok"`
-	SearchFail int64            `json:"search_fail"`
-	HistoryOK int64             `json:"history_ok"`
-	HistoryMsg int64            `json:"history_messages"`
-	HbOK      int64             `json:"heartbeat_ok"`
-	HbFail    int64             `json:"heartbeat_fail"`
-	Delivery  map[float64]float64 `json:"delivery_latency_ms,omitempty"`
-	AckLat    map[float64]float64 `json:"ack_latency_ms,omitempty"`
-	Fanout    map[float64]float64 `json:"fanout_latency_ms,omitempty"`
-	Request   map[float64]float64 `json:"request_latency_ms,omitempty"`
-	Hist      map[float64]float64 `json:"history_latency_ms,omitempty"`
-	Service   *ServiceSummary     `json:"service,omitempty"`
-	Extra     map[string]string   `json:"extra,omitempty"`
+	Scenario   string              `json:"scenario"`
+	DurationS  float64             `json:"duration_s"`
+	Sent       int64               `json:"sent"`
+	Delivered  int64               `json:"delivered"`
+	Acked      int64               `json:"acked"`
+	Failed     int64               `json:"failed"`
+	Drops      int64               `json:"drops"`
+	Connects   int64               `json:"connects"`
+	ConnectOK  int64               `json:"connect_ok"`
+	SearchOK   int64               `json:"search_ok"`
+	SearchFail int64               `json:"search_fail"`
+	HistoryOK  int64               `json:"history_ok"`
+	HistoryMsg int64               `json:"history_messages"`
+	HbOK       int64               `json:"heartbeat_ok"`
+	HbFail     int64               `json:"heartbeat_fail"`
+	Delivery   map[float64]float64 `json:"delivery_latency_ms,omitempty"`
+	AckLat     map[float64]float64 `json:"ack_latency_ms,omitempty"`
+	Fanout     map[float64]float64 `json:"fanout_latency_ms,omitempty"`
+	Request    map[float64]float64 `json:"request_latency_ms,omitempty"`
+	Hist       map[float64]float64 `json:"history_latency_ms,omitempty"`
+	Service    *ServiceSummary     `json:"service,omitempty"`
+	Extra      map[string]string   `json:"extra,omitempty"`
 }
 
 func (r *Result) writeTable(w io.Writer) {

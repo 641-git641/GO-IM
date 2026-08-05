@@ -18,13 +18,13 @@ type benchConn interface {
 
 type wsConn struct{ c *kit.WSClient }
 
-func (w *wsConn) ReadMsg(d time.Duration) (*proto.Message, error) { return w.c.ReadMessage(d) }
+func (w *wsConn) ReadMsg(d time.Duration) (*proto.Message, error)  { return w.c.ReadMessage(d) }
 func (w *wsConn) WriteMsg(m *proto.Message, d time.Duration) error { return w.c.WriteMessage(m, d) }
 func (w *wsConn) Close() error                                     { return w.c.Close() }
 
 type tcpConn struct{ c *kit.TCPClient }
 
-func (t *tcpConn) ReadMsg(d time.Duration) (*proto.Message, error) { return t.c.ReadFrame(d) }
+func (t *tcpConn) ReadMsg(d time.Duration) (*proto.Message, error)  { return t.c.ReadFrame(d) }
 func (t *tcpConn) WriteMsg(m *proto.Message, d time.Duration) error { return t.c.WriteFrame(m, d) }
 func (t *tcpConn) Close() error                                     { return t.c.Close() }
 

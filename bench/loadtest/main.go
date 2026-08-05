@@ -39,11 +39,11 @@ type options struct {
 	tcpAddr   string
 	transport string
 
-	users   int // chat 用户数(配对)
-	conns   int // churn / heartbeat 连接数
-	rate    float64
+	users    int // chat 用户数(配对)
+	conns    int // churn / heartbeat 连接数
+	rate     float64
 	duration time.Duration
-	workers int
+	workers  int
 	connRate float64 // churn 连接速率 conn/s
 
 	groupSize int
@@ -57,7 +57,7 @@ type options struct {
 
 	seqBase int64 // 本次运行的 seq 起点(避免与历史 dedup 记录冲突)
 
-	pct    []float64
+	pct     []float64
 	jsonOut bool
 	verbose bool
 }
