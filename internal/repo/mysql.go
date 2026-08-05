@@ -672,32 +672,56 @@ func (s *MySQLStore) DeleteUser(ctx context.Context, uid string) error {
 	return nil
 }
 
-// UpdateUserRole 更新用户的角色。如果没有行受影响则返回错误。
+// userExists 检查用户是否存在。
+// 供 UpdateUserRole / UpdateUserDisabled 使用:MySQL 默认语义下
+// UPDATE 值不变时 RowsAffected=0,需借此区分"用户不存在"与"幂等更新成功"。
+func (s *MySQLStore) userExists(ctx context.Context, uid string) (bool, error) {
+	var n int
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users WHERE uid = ?", uid).Scan(&n); err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// UpdateUserRole 更新用户的角色。如果用户不存在则返回错误。
+// WHERE 附加 AND role <> ?:排除"已是目标角色"的幂等更新,
+// 避免 MySQL 相同值更新时 RowsAffected=0 误报用户不存在。
 func (s *MySQLStore) UpdateUserRole(ctx context.Context, uid, role string) error {
-	result, err := s.db.ExecContext(ctx, "UPDATE users SET role = ? WHERE uid = ?", role, uid)
+	result, err := s.db.ExecContext(ctx, "UPDATE users SET role = ? WHERE uid = ? AND role <> ?", role, uid, role)
 	if err != nil {
 		return fmt.Errorf("update user role: %w", err)
 	}
-	n, _ := result.RowsAffected()
-	if n == 0 {
-		return fmt.Errorf("user %s not found", uid)
+	if n, _ := result.RowsAffected(); n == 0 {
+		ok, err := s.userExists(ctx, uid)
+		if err != nil {
+			return fmt.Errorf("check user %s: %w", uid, err)
+		}
+		if !ok {
+			return fmt.Errorf("user %s not found", uid)
+		}
 	}
 	return nil
 }
 
-// UpdateUserDisabled 更新用户的禁用状态。如果没有行受影响则返回错误。
+// UpdateUserDisabled 更新用户的禁用状态。如果用户不存在则返回错误。
+// 与 UpdateUserRole 相同,附加 AND is_disabled <> ? 排除幂等更新误报。
 func (s *MySQLStore) UpdateUserDisabled(ctx context.Context, uid string, disabled bool) error {
 	val := 0
 	if disabled {
 		val = 1
 	}
-	result, err := s.db.ExecContext(ctx, "UPDATE users SET is_disabled = ? WHERE uid = ?", val, uid)
+	result, err := s.db.ExecContext(ctx, "UPDATE users SET is_disabled = ? WHERE uid = ? AND is_disabled <> ?", val, uid, val)
 	if err != nil {
 		return fmt.Errorf("update user disabled: %w", err)
 	}
-	n, _ := result.RowsAffected()
-	if n == 0 {
-		return fmt.Errorf("user %s not found", uid)
+	if n, _ := result.RowsAffected(); n == 0 {
+		ok, err := s.userExists(ctx, uid)
+		if err != nil {
+			return fmt.Errorf("check user %s: %w", uid, err)
+		}
+		if !ok {
+			return fmt.Errorf("user %s not found", uid)
+		}
 	}
 	return nil
 }

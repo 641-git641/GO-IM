@@ -106,6 +106,60 @@ func TestMySQLUserCreateDuplicate(t *testing.T) {
 	}
 }
 
+func TestMySQLUpdateUserRoleAndDisabled(t *testing.T) {
+	s := newTestMySQLStore(t)
+	defer s.Close()
+	truncateAll(t, s)
+
+	ctx := context.Background()
+	u := &User{UID: "roleuser", Username: "Role User", PasswordHash: "hash", CreatedAt: 1}
+	if err := s.Create(ctx, u); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// 1. 正常提升为 admin。
+	if err := s.UpdateUserRole(ctx, "roleuser", "admin"); err != nil {
+		t.Fatalf("UpdateUserRole first: %v", err)
+	}
+	got, _ := s.GetByUID(ctx, "roleuser")
+	if got.Role != "admin" {
+		t.Errorf("role: expected admin, got %q", got.Role)
+	}
+
+	// 2. 幂等更新：已是 admin 再设 admin，不应误报"用户不存在"
+	//   （MySQL 默认语义下 UPDATE 值不变时 RowsAffected=0）。
+	if err := s.UpdateUserRole(ctx, "roleuser", "admin"); err != nil {
+		t.Errorf("UpdateUserRole idempotent: %v (must not report not-found)", err)
+	}
+
+	// 3. 不存在的用户应报错。
+	if err := s.UpdateUserRole(ctx, "nosuchuser", "admin"); err == nil {
+		t.Error("expected error for nonexistent user, got nil")
+	}
+
+	// 4. 禁用 → 幂等禁用 → 解禁 → 不存在用户报错。
+	if err := s.UpdateUserDisabled(ctx, "roleuser", true); err != nil {
+		t.Fatalf("UpdateUserDisabled(true): %v", err)
+	}
+	got, _ = s.GetByUID(ctx, "roleuser")
+	if !got.IsDisabled {
+		t.Error("IsDisabled: expected true after disable")
+	}
+	if err := s.UpdateUserDisabled(ctx, "roleuser", true); err != nil {
+		t.Errorf("UpdateUserDisabled idempotent: %v (must not report not-found)", err)
+	}
+	if err := s.UpdateUserDisabled(ctx, "roleuser", false); err != nil {
+		t.Errorf("UpdateUserDisabled(false): %v", err)
+	}
+	got, _ = s.GetByUID(ctx, "roleuser")
+	if got.IsDisabled {
+		t.Error("IsDisabled: expected false after un-disable")
+	}
+	if err := s.UpdateUserDisabled(ctx, "nosuchuser", true); err == nil {
+		t.Error("expected error for nonexistent user, got nil")
+	}
+}
+
 func TestMySQLUserNotFound(t *testing.T) {
 	s := newTestMySQLStore(t)
 	defer s.Close()
