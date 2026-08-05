@@ -354,7 +354,7 @@ message Message {
 
 ### 持续部署（CD）
 
-> ⚠️ CD 流水线（[.github/workflows/cd.yml](.github/workflows/cd.yml)：push main → GHCR 镜像 → SSH 部署 + 健康检查）**已配置但尚未首跑**——deploy 步骤需要真实服务器 + 12 个 GitHub Secrets（SSH_HOST / SSH_USER / SSH_KEY / SSH_PORT / GHCR_USER / GHCR_TOKEN / DOMAIN / JWT_SECRET / MYSQL_ROOT_PASSWORD / MYSQL_PASSWORD / MINIO_SECRET_KEY / ADMIN_UID）。服务器就绪后手动触发一次 `workflow_dispatch` 完成首跑。
+> ✅ CD 流水线（[.github/workflows/cd.yml](.github/workflows/cd.yml)：push main → GHCR 镜像 → SSH 部署 + 健康检查）已接入生产服务器（goimchat.site）。需配置 **11 个必配 secrets**：SSH_HOST / SSH_USER / SSH_KEY / SSH_PORT / DOMAIN / JWT_SECRET / MYSQL_ROOT_PASSWORD / MYSQL_PASSWORD / MINIO_ROOT_USER / MINIO_SECRET_KEY / ADMIN_UID。**GHCR_USER / GHCR_TOKEN 可选**——镜像公开时匿名拉取即可，配了才执行 `docker login`（镜像转私有后按需补）。
 
 ## 生产部署
 
